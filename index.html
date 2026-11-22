@@ -1121,11 +1121,6 @@
       render();
     }
 
-    /**
-     * Si el usuario está editando la plantilla demo y cambió su email o contraseña
-     * (o su identidad), crea una tienda nueva propia con esos datos y deja intacta
-     * la plantilla demo para que siga disponible para otros emprendedores.
-     */
     function materializeOwnStoreFromTemplate(templateStore, newFields) {
       const newEmail = String(newFields.email || '').trim().toLowerCase();
       const newPass = String(newFields.password || '').trim();
@@ -1171,7 +1166,6 @@
         nombre: newName || templateStore.nombre
       };
 
-      // Copiar productos actuales de la plantilla hacia la nueva tienda propia
       const currentTemplateProds = db.productos.filter(p => p.tiendaId === DEMO_TEMPLATE_ID);
       const idMap = new Map();
       const clonedProds = currentTemplateProds.map((p, idx) => {
@@ -1186,7 +1180,6 @@
         };
       });
 
-      // Copiar ofertas asociadas a esos productos para la tienda propia
       const clonedOffers = db.ofertas
         .filter(o => idMap.has(o.productoId))
         .map((o, idx) => ({
@@ -1195,7 +1188,6 @@
           productoId: idMap.get(o.productoId)
         }));
 
-      // Copiar pedidos de la plantilla hacia la tienda propia
       const clonedOrders = db.pedidos
         .filter(o => o.tiendaId === DEMO_TEMPLATE_ID)
         .map((o, idx) => ({
@@ -1205,7 +1197,6 @@
           tiendaNombre: ownStore.nombre
         }));
 
-      // Restaurar la plantilla original intacta para futuros usos
       const freshTemplate = createDemoTemplateStore(new Date().toISOString().split('T')[0]);
       const freshTemplateProds = createDemoTemplateProducts();
 
@@ -1339,6 +1330,7 @@
       };
     }
 
+    // --- 3. Sincronización con Google Sheets (prioriza la hoja al entrar desde otro celular) ---
     function mergeSheetDataIntoState(payload) {
       if (!payload || typeof payload !== 'object') return false;
       const data = payload.data && typeof payload.data === 'object' ? payload.data : payload;
@@ -1346,25 +1338,27 @@
       const sheetStoresRaw = Array.isArray(data.tiendas) ? data.tiendas : (Array.isArray(data.stores) ? data.stores : null);
       const sheetProdsRaw = Array.isArray(data.productos) ? data.productos : (Array.isArray(data.products) ? data.products : null);
 
+      let changed = false;
+
       if (sheetStoresRaw && sheetStoresRaw.length > 0) {
         const normalizedStores = sheetStoresRaw.map(normalizeSheetStore).filter(Boolean);
         if (normalizedStores.length > 0) {
-          const sheetStoreIds = new Set(normalizedStores.map(s => s.id));
-          const customLocalStores = db.tiendas.filter(s => !sheetStoreIds.has(s.id) && !s.id.startsWith('tienda-'));
-          db.tiendas = [...customLocalStores, ...normalizedStores];
+          const byId = new Map();
+          db.tiendas.forEach(s => byId.set(s.id, s));
+          normalizedStores.forEach(s => byId.set(s.id, s));
+          db.tiendas = Array.from(byId.values());
+          changed = true;
         }
       }
 
       if (sheetProdsRaw && sheetProdsRaw.length > 0) {
         const normalizedProds = sheetProdsRaw.map(normalizeSheetProduct).filter(Boolean);
         if (normalizedProds.length > 0) {
-          const validStoreIds = new Set(db.tiendas.map(s => s.id));
-          const filteredSheetProds = normalizedProds.filter(p => !p.tiendaId || validStoreIds.has(p.tiendaId));
-          if (filteredSheetProds.length > 0) {
-            const sheetProdIds = new Set(filteredSheetProds.map(p => p.id));
-            const customLocalProds = db.productos.filter(p => !sheetProdIds.has(p.id) && !p.id.startsWith('prod-'));
-            db.productos = [...customLocalProds, ...filteredSheetProds];
-          }
+          const byProdId = new Map();
+          db.productos.forEach(p => byProdId.set(p.id, p));
+          normalizedProds.forEach(p => byProdId.set(p.id, p));
+          db.productos = Array.from(byProdId.values());
+          changed = true;
         }
       }
 
@@ -1376,49 +1370,38 @@
           hastaCuando: Number(o.hastaCuando) || (Date.now() + 4 * 60 * 60 * 1000),
           destacada: parseBool(o.destacada, false)
         })).filter(o => o.productoId && o.precioOferta > 0);
-      }
-
-      if (Array.isArray(data.resenas) && data.resenas.length > 0) {
-        const mappedReviews = data.resenas.map((r, idx) => ({
-          id: String(r.id || 'rev-sheet-' + idx),
-          tiendaId: String(r.tiendaId || r.tienda_id || ''),
-          cliente: String(r.cliente || 'Vecino').trim(),
-          avatar: String(r.avatar || '').trim() || makeSvgFallbackDataUri('Vecino', '#1A2A44'),
-          fecha: String(r.fecha || 'Reciente'),
-          estrellas: Number(r.estrellas) || 5,
-          comentario: String(r.comentario || '').trim(),
-          fotoProducto: String(r.fotoProducto || '').trim()
-        })).filter(r => r.tiendaId && r.comentario);
-        if (mappedReviews.length > 0) {
-          const existingIds = new Set(db.resenas.map(r => r.id));
-          db.resenas = [...mappedReviews.filter(r => !existingIds.has(r.id)), ...db.resenas];
-        }
+        changed = true;
       }
 
       if (Array.isArray(data.pedidos) && data.pedidos.length > 0) {
-        const mappedOrders = data.pedidos.map((ord, idx) => ({
-          id: String(ord.id || 'PED-SH-' + (1000 + idx)),
-          tiendaId: String(ord.tiendaId || ord.tienda_id || ''),
-          tiendaNombre: String(ord.tiendaNombre || ''),
-          cliente: String(ord.cliente || 'Cliente'),
-          barrio: String(ord.barrio || 'Centro'),
-          direccion: String(ord.direccion || ''),
-          nota: String(ord.nota || ''),
-          fecha: String(ord.fecha || 'Hoy'),
-          estado: String(ord.estado || 'Nuevo'),
-          esNuevoNoVisto: parseBool(ord.esNuevoNoVisto, false),
-          total: Number(ord.total) || 0,
-          items: Array.isArray(ord.items) ? ord.items : []
-        })).filter(ord => ord.tiendaId);
-        if (mappedOrders.length > 0) {
-          const existingOrderIds = new Set(db.pedidos.map(o => o.id));
-          db.pedidos = [...mappedOrders.filter(o => !existingOrderIds.has(o.id)), ...db.pedidos];
-        }
+        const byOrderId = new Map();
+        db.pedidos.forEach(o => byOrderId.set(o.id, o));
+        data.pedidos.forEach((ord, idx) => {
+          const id = String(ord.id || 'PED-SH-' + (1000 + idx));
+          byOrderId.set(id, {
+            id,
+            tiendaId: String(ord.tiendaId || ord.tienda_id || ''),
+            tiendaNombre: String(ord.tiendaNombre || ''),
+            cliente: String(ord.cliente || 'Cliente'),
+            barrio: String(ord.barrio || 'Centro'),
+            direccion: String(ord.direccion || ''),
+            nota: String(ord.nota || ''),
+            fecha: String(ord.fecha || 'Hoy'),
+            estado: String(ord.estado || 'Nuevo'),
+            esNuevoNoVisto: parseBool(ord.esNuevoNoVisto, false),
+            total: Number(ord.total) || 0,
+            items: parseListField(ord.items, [])
+          });
+        });
+        db.pedidos = Array.from(byOrderId.values());
+        changed = true;
       }
 
-      ensureDemoTemplateExists();
-      saveState(db);
-      return true;
+      if (changed) {
+        ensureDemoTemplateExists();
+        saveState(db);
+      }
+      return changed;
     }
 
     async function fetchSheetDataOnLoad() {
@@ -1628,7 +1611,23 @@
       window.open(url, '_blank', 'noopener,noreferrer');
     }
 
-    function readImageFileAsDataUrl(file, maxWidth = 800, quality = 0.82) {
+    // --- 1. Helper para no perder el teclado al escribir ---
+    function renderAndKeepFocus(elId, startPos, endPos) {
+      render();
+      requestAnimationFrame(() => {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        el.focus();
+        try {
+          if (typeof startPos === 'number') {
+            el.setSelectionRange(startPos, typeof endPos === 'number' ? endPos : startPos);
+          }
+        } catch (_) {}
+      });
+    }
+
+    // --- 2. Compresión liviana para no superar el límite de 50.000 chars por celda en Sheets ---
+    function readImageFileAsDataUrl(file, maxWidth = 500, quality = 0.65) {
       return new Promise((resolve, reject) => {
         if (!file || !file.type.startsWith('image/')) {
           reject(new Error('Seleccioná un archivo de imagen válido.'));
@@ -3408,7 +3407,6 @@
               </div>
             </div>
 
-            <!-- Credenciales de acceso (email y contraseña) para apropiarse de la plantilla -->
             <div class="border border-slate-200 rounded-2xl p-4 bg-slate-50/70 space-y-3">
               <div class="flex items-center justify-between gap-2 flex-wrap">
                 <span class="text-xs font-extrabold text-[#1A2A44]">Acceso a tu cuenta de tienda</span>
@@ -3671,13 +3669,13 @@
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Precio ($) *</label>
-              <input type="number" required min="1" value="${Number(draft.precio) || 0}" oninput="ui.productFormDraft.precio = Number(this.value); render();" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-extrabold" />
+              <input id="prod-price-input" type="number" required min="1" value="${Number(draft.precio) || 0}" oninput="ui.productFormDraft.precio = Number(this.value); renderAndKeepFocus('prod-price-input', this.selectionStart, this.selectionEnd);" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-extrabold" />
               <span class="text-[11px] text-[#666666]">${formatARS(draft.precio)}</span>
             </div>
 
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Precio oferta (opcional)</label>
-              <input type="number" min="0" value="${draft.precioOferta ? Number(draft.precioOferta) : ''}" oninput="ui.productFormDraft.precioOferta = this.value ? Number(this.value) : null; render();" placeholder="Ej: 14500" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-extrabold" />
+              <input id="prod-offer-input" type="number" min="0" value="${draft.precioOferta ? Number(draft.precioOferta) : ''}" oninput="ui.productFormDraft.precioOferta = this.value ? Number(this.value) : null; renderAndKeepFocus('prod-offer-input', this.selectionStart, this.selectionEnd);" placeholder="Ej: 14500" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-extrabold" />
               ${disc > 0 ? `<span class="text-[11px] font-extrabold text-[#E53935]">Descuento automático: -${disc}%</span>` : ''}
             </div>
 
@@ -4096,22 +4094,16 @@
               <span class="text-xs font-extrabold uppercase tracking-wider text-[#1A2A44]">${escapeHtml(store.nombre)} · 📍 ${escapeHtml(store.barrio)}</span>
               <h2 class="font-extrabold text-xl sm:text-2xl text-[#111111] mt-0.5">${escapeHtml(prod.nombre)}</h2>
             </div>
-            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold text-base">✕</button>
+            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
           </div>
 
-          <div class="aspect-square max-h-72 w-full rounded-2xl overflow-hidden bg-slate-100 mb-3">
-            <img id="pd-main-photo" src="${escapeHtml(photos[0])}" alt="${escapeHtml(prod.nombre)}" class="w-full h-full object-cover" onerror="if(this.dataset.fbDone!=='1'){this.dataset.fbDone='1';this.src='${escapeHtml(SAMPLE_FALLBACK_PHOTO)}';}" />
+          <div class="grid grid-cols-3 gap-2.5 mb-4">
+            ${photos.slice(0, 3).map((ph, idx) => `
+              <div class="aspect-square rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
+                ${renderSafeImage(ph, `${prod.nombre} foto ${idx + 1}`)}
+              </div>
+            `).join('')}
           </div>
-
-          ${photos.length > 1 ? `
-            <div class="flex items-center gap-2 mb-4 overflow-x-auto no-scrollbar">
-              ${photos.map((ph, idx) => `
-                <button type="button" onclick="document.getElementById('pd-main-photo').src='${escapeHtml(ph)}'" class="w-16 h-16 rounded-xl overflow-hidden border-2 border-slate-200 hover:border-[#1A2A44] shrink-0">
-                  ${renderSafeImage(ph, `${prod.nombre} foto ${idx + 1}`)}
-                </button>
-              `).join('')}
-            </div>
-          ` : ''}
 
           <div class="flex items-baseline gap-2.5 flex-wrap mb-3">
             <span class="text-2xl font-extrabold ${pricing.hasOffer ? 'text-[#E53935]' : 'text-[#111111]'}">${formatARS(pricing.finalPrice)}</span>
@@ -4119,25 +4111,17 @@
               <span class="text-sm text-[#666666] line-through">${formatARS(pricing.originalPrice)}</span>
               <span class="px-2 py-0.5 rounded-md bg-[#E53935] text-white text-xs font-extrabold">-${pricing.discountPct}%</span>
             ` : ''}
-            <span class="text-xs font-semibold ${prod.stockDisponible ? 'text-[#2E7D32]' : 'text-[#9E9E9E]'}">
-              ${prod.stockDisponible ? '· Disponible' : '· AGOTADO'}
-            </span>
+            ${store.haceEnvios ? `<span class="text-xs font-bold text-[#2E7D32]">· Envío ${formatARS(store.precioEnvio)}</span>` : ''}
           </div>
 
-          <p class="text-sm text-[#111111] leading-relaxed mb-4">
-            ${escapeHtml(prod.descripcion || 'Producto disponible en Mercado Tres Arroyos.')}
-          </p>
+          <p class="text-sm text-[#111111] leading-relaxed mb-5">${escapeHtml(prod.descripcion || '')}</p>
 
-          <div class="text-xs font-semibold text-[#666666] bg-slate-50 rounded-xl p-3 mb-5">
-            🚚 ${store.haceEnvios ? `Envío ${formatARS(store.precioEnvio)}${store.envioGratisDesde ? ` · Gratis desde ${formatARS(store.envioGratisDesde)}` : ''}` : `Retiro en ${store.direccion || store.barrio}`}
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button type="button" ${!prod.stockDisponible ? 'disabled' : ''} onclick="closeModal(); quickBuyWhatsApp('${prod.id}');" class="min-h-[50px] px-4 py-2.5 rounded-[12px] bg-[#25D366] hover:bg-[#1EB956] text-white font-extrabold text-sm flex items-center justify-center gap-1.5">
+          <div class="flex flex-col sm:flex-row gap-2.5">
+            <button type="button" onclick="closeModal(); quickBuyWhatsApp('${prod.id}');" class="flex-1 min-h-[50px] px-4 py-3 rounded-[12px] bg-[#25D366] hover:bg-[#1EB956] text-white font-extrabold text-sm flex items-center justify-center gap-2">
               <span>💬 Pedir por WhatsApp</span>
             </button>
-            <button type="button" ${!prod.stockDisponible ? 'disabled' : ''} onclick="addToCart('${prod.id}', 1); closeModal();" class="min-h-[50px] px-4 py-2.5 rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm flex items-center justify-center gap-1.5">
-              <span>+ Agregar al carrito</span>
+            <button type="button" onclick="addToCart('${prod.id}', 1); closeModal();" class="flex-1 min-h-[50px] px-4 py-3 rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm">
+              + Agregar al carrito
             </button>
           </div>
         </div>
@@ -4147,67 +4131,73 @@
     function openLoginModal() {
       openModal(`
         <div>
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="font-extrabold text-xl text-[#1A2A44]">Ingresar a Mercado Tres Arroyos</h2>
+          <div class="flex items-center justify-between gap-2 mb-4">
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">Ingresar a tu cuenta</h2>
             <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
           </div>
 
-          <form id="login-modal-form" class="space-y-4">
+          <form id="login-form" class="space-y-4">
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Email o usuario</label>
-              <input id="login-email-input" type="text" required placeholder="tu@email.com o admin" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]" />
+              <input id="login-email" type="text" required placeholder="tu-email@ejemplo.com" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]" />
             </div>
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Contraseña</label>
-              <input id="login-pass-input" type="password" required placeholder="••••••••" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]" />
+              <input id="login-password" type="password" required placeholder="Tu contraseña" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]" />
             </div>
-            <button type="submit" class="min-h-[50px] w-full rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm">
-              Entrar
+            <button type="submit" class="w-full min-h-[50px] rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm">
+              Ingresar
             </button>
           </form>
 
-          <div class="mt-5 pt-4 border-t border-slate-200 space-y-2 text-xs text-[#666666]">
-            <div class="font-bold text-[#111111]">Acceso rápido a la tienda plantilla guía:</div>
-            <p>Usá la plantilla de ejemplo para probar y editar textos, fotos, precios, email y contraseña: <span class="font-mono font-bold text-[#111111]">tienda@tresarroyos.com</span> / <span class="font-mono font-bold text-[#111111]">123456</span></p>
-            <button type="button" onclick="window.__openDemoTemplateAsVendor()" class="mt-1 min-h-[44px] w-full rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#2E7D32] font-extrabold text-xs">
-              Abrir plantilla guía en Panel del Emprendedor
-            </button>
+          <div class="mt-5 pt-4 border-t border-slate-200 space-y-2.5 text-xs">
+            <div class="text-[#666666] font-semibold">Acceso rápido para probar o arrancar desde una plantilla guía:</div>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" onclick="window.__quickLoginVendor('${DEMO_TEMPLATE_EMAIL}', '${DEMO_TEMPLATE_PASS}')" class="min-h-[40px] px-3 py-1.5 rounded-xl bg-emerald-50 text-[#2E7D32] font-extrabold">
+                Plantilla Guía (${DEMO_TEMPLATE_EMAIL} / ${DEMO_TEMPLATE_PASS})
+              </button>
+              <button type="button" onclick="window.__quickLoginVendor('maru@tresarroyos.com', '123456')" class="min-h-[40px] px-3 py-1.5 rounded-xl bg-slate-100 text-[#111111] font-bold">
+                Tienda ejemplo: Maru
+              </button>
+              <button type="button" onclick="window.__quickLoginAdmin()" class="min-h-[40px] px-3 py-1.5 rounded-xl bg-slate-100 text-[#1A2A44] font-bold">
+                Admin
+              </button>
+            </div>
           </div>
         </div>
       `);
 
-      setTimeout(() => {
-        const form = document.getElementById('login-modal-form');
-        if (!form) return;
+      const form = document.getElementById('login-form');
+      if (form) {
         form.onsubmit = (e) => {
           e.preventDefault();
-          const emailVal = (document.getElementById('login-email-input').value || '').trim().toLowerCase();
-          const passVal = (document.getElementById('login-pass-input').value || '').trim();
+          const emailVal = String(document.getElementById('login-email').value || '').trim().toLowerCase();
+          const passVal = String(document.getElementById('login-password').value || '').trim();
 
-          if (emailVal === 'admin' || emailVal.includes('admin')) {
+          if (emailVal === 'admin@tresarroyos.com' || emailVal === 'admin') {
             ui.session = { role: 'ADMIN' };
             closeModal();
-            showToast('Ingresaste como Administrador.', 'success');
+            showToast('Sesión de administrador iniciada.', 'success');
             navigate('PANEL_ADMIN');
             return;
           }
 
-          ensureDemoTemplateExists();
           const matchedStore = db.tiendas.find(t =>
-            (t.email || '').trim().toLowerCase() === emailVal &&
+            String(t.email || '').trim().toLowerCase() === emailVal &&
             String(t.password || '').trim() === passVal
           );
 
           if (matchedStore) {
             ui.session = { role: 'VENDOR', storeId: matchedStore.id };
             closeModal();
-            showToast(`¡Bienvenido a ${matchedStore.nombre}!`, 'success');
+            showToast(`¡Hola ${matchedStore.nombre}!`, 'success');
             navigate('PANEL_TIENDA');
-          } else {
-            showToast('Email o contraseña incorrectos.', 'error');
+            return;
           }
+
+          showToast('Email o contraseña incorrectos.', 'error');
         };
-      }, 20);
+      }
     }
 
     function openReviewModal(storeId) {
@@ -4216,72 +4206,58 @@
 
       openModal(`
         <div>
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center justify-between gap-2 mb-4">
             <h2 class="font-extrabold text-xl text-[#1A2A44]">Dejar reseña · ${escapeHtml(store.nombre)}</h2>
             <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
           </div>
-
-          <form id="review-modal-form" class="space-y-4">
+          <form id="review-form" class="space-y-4">
             <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Tu nombre *</label>
-              <input id="rev-name" type="text" required placeholder="Ej: Florencia Ruiz" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm" />
+              <label class="block text-xs font-bold mb-1">Tu nombre</label>
+              <input id="rev-name" type="text" required placeholder="Ej: Mariana Gómez" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm" />
             </div>
             <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Calificación *</label>
-              <select id="rev-stars" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-bold">
-                <option value="5">5 ★ — Excelente</option>
-                <option value="4">4 ★ — Muy bueno</option>
-                <option value="3">3 ★ — Bueno</option>
-                <option value="2">2 ★ — Regular</option>
-                <option value="1">1 ★ — Malo</option>
+              <label class="block text-xs font-bold mb-1">Calificación</label>
+              <select id="rev-stars" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-bold">
+                <option value="5">5 estrellas ★★★★★</option>
+                <option value="4">4 estrellas ★★★★</option>
+                <option value="3">3 estrellas ★★★</option>
               </select>
             </div>
             <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Comentario *</label>
-              <textarea id="rev-comment" rows="3" required placeholder="Contá tu experiencia comprando en esta tienda..." class="w-full p-3.5 rounded-xl border border-slate-300 text-sm"></textarea>
+              <label class="block text-xs font-bold mb-1">Comentario</label>
+              <textarea id="rev-comment" rows="3" required placeholder="Contá cómo fue tu experiencia..." class="w-full p-3.5 rounded-xl border border-slate-300 text-sm"></textarea>
             </div>
-            <button type="submit" class="min-h-[50px] w-full rounded-[12px] bg-[#25D366] hover:bg-[#1EB956] text-white font-extrabold text-sm">
+            <button type="submit" class="w-full min-h-[48px] rounded-[12px] bg-[#1A2A44] text-white font-extrabold text-sm">
               Publicar reseña
             </button>
           </form>
         </div>
       `);
 
-      setTimeout(() => {
-        const form = document.getElementById('review-modal-form');
-        if (!form) return;
-        form.onsubmit = (e) => {
-          e.preventDefault();
-          const cliente = (document.getElementById('rev-name').value || '').trim();
-          const estrellas = Number(document.getElementById('rev-stars').value) || 5;
-          const comentario = (document.getElementById('rev-comment').value || '').trim();
-          if (!cliente || !comentario) return;
+      document.getElementById('review-form').onsubmit = (e) => {
+        e.preventDefault();
+        const cliente = document.getElementById('rev-name').value.trim();
+        const estrellas = Number(document.getElementById('rev-stars').value) || 5;
+        const comentario = document.getElementById('rev-comment').value.trim();
+        if (!cliente || !comentario) return;
 
-          const newRev = {
-            id: 'rev-' + Date.now(),
-            tiendaId: store.id,
-            cliente,
-            avatar: makeSvgFallbackDataUri(cliente, '#1A2A44'),
-            fecha: 'Hoy',
-            estrellas,
-            comentario,
-            fotoProducto: ''
-          };
-
-          db.resenas.unshift(newRev);
-          const allStReviews = db.resenas.filter(r => r.tiendaId === store.id);
-          const avg = allStReviews.reduce((s, r) => s + (r.estrellas || 5), 0) / Math.max(1, allStReviews.length);
-          store.rating = Number(avg.toFixed(1));
-          store.reviewCount = (store.reviewCount || 0) + 1;
-          if (estrellas === 5) store.fiveStarCount = (store.fiveStarCount || 0) + 1;
-
-          saveState(db);
-          pushToSheet('createReview', newRev);
-          closeModal();
-          showToast('¡Gracias por tu reseña!', 'success');
-          render();
-        };
-      }, 20);
+        db.resenas.unshift({
+          id: 'rev-' + Date.now(),
+          tiendaId: store.id,
+          cliente,
+          avatar: makeSvgFallbackDataUri(cliente.slice(0, 2) || 'TA', '#1A2A44'),
+          fecha: 'Hoy',
+          estrellas,
+          comentario,
+          fotoProducto: ''
+        });
+        store.reviewCount = (store.reviewCount || 0) + 1;
+        if (estrellas === 5) store.fiveStarCount = (store.fiveStarCount || 0) + 1;
+        saveState(db);
+        closeModal();
+        showToast('¡Gracias por dejar tu reseña!', 'success');
+        render();
+      };
     }
 
     function openReportStoreModal(storeId) {
@@ -4289,109 +4265,322 @@
       if (!store) return;
       openModal(`
         <div>
-          <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center justify-between gap-2 mb-3">
             <h2 class="font-extrabold text-lg text-[#1A2A44]">Reportar tienda · ${escapeHtml(store.nombre)}</h2>
             <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
           </div>
-          <p class="text-xs text-[#666666] mb-3">Contanos si hay algún dato desactualizado o inconveniente con esta publicación.</p>
-          <textarea id="report-reason-text" rows="3" placeholder="Ej: Horario desactualizado..." class="w-full p-3 rounded-xl border border-slate-300 text-sm mb-4"></textarea>
-          <button type="button" onclick="closeModal(); showToast('Reporte enviado. Gracias por ayudar a mantener Mercado Tres Arroyos al día.', 'success');" class="min-h-[48px] w-full rounded-[12px] bg-[#1A2A44] text-white font-bold text-sm">
-            Enviar reporte
-          </button>
+          <p class="text-xs text-[#666666] mb-4">Indicá el motivo para revisar la publicación.</p>
+          <form id="report-form" class="space-y-3">
+            <select id="rep-reason" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
+              <option value="Datos desactualizados">Horarios o precios desactualizados</option>
+              <option value="No responde">No responde por WhatsApp</option>
+              <option value="Otro">Otro motivo</option>
+            </select>
+            <button type="submit" class="w-full min-h-[48px] rounded-[12px] bg-[#1A2A44] text-white font-extrabold text-sm">
+              Enviar reporte
+            </button>
+          </form>
         </div>
       `);
+      document.getElementById('report-form').onsubmit = (e) => {
+        e.preventDefault();
+        closeModal();
+        showToast('Reporte enviado. Gracias por ayudar a cuidar la comunidad.', 'success');
+      };
     }
 
-    // Eventos globales y handlers de formularios
+    // Acciones globales vinculadas a botones y formularios
     window.__openDemoTemplateAsVendor = function () {
       ensureDemoTemplateExists();
       ui.session = { role: 'VENDOR', storeId: DEMO_TEMPLATE_ID };
       ui.vendorTab = 'MI_TIENDA';
-      ui.showProductForm = false;
-      ui.productFormDraft = null;
-      saveState(db);
-      closeModal();
-      showToast('Plantilla de ejemplo abierta en el Panel del Emprendedor.', 'success');
-      navigate('PANEL_TIENDA', { vendorTab: 'MI_TIENDA' });
+      navigate('PANEL_TIENDA');
     };
 
-    function bindDynamicEvents() {
-      const checkoutForm = document.getElementById('cart-checkout-form');
-      if (checkoutForm) {
-        checkoutForm.onsubmit = (e) => {
-          e.preventDefault();
-          const customerName = (document.getElementById('cart-customer-name').value || '').trim();
-          const customerBarrio = (document.getElementById('cart-customer-barrio').value || 'Centro').trim();
-          const customerAddress = (document.getElementById('cart-customer-address').value || '').trim();
-          const customerNote = (document.getElementById('cart-customer-note').value || '').trim();
-
-          if (!customerName || !customerAddress || db.carrito.length === 0) return;
-
-          const byStore = new Map();
-          db.carrito.forEach(item => {
-            if (!byStore.has(item.tiendaId)) byStore.set(item.tiendaId, []);
-            byStore.get(item.tiendaId).push(item);
-          });
-
-          const firstEntry = Array.from(byStore.entries())[0];
-          const [firstStoreId, firstItems] = firstEntry;
-          const targetStore = getStoreById(firstStoreId) || { nombre: 'Tienda', whatsapp: SUPPORT_WHATSAPP, haceEnvios: true, precioEnvio: 1500 };
-
-          const subStore = firstItems.reduce((s, i) => s + i.precio * i.cantidad, 0);
-          const shipStore = targetStore.haceEnvios
-            ? ((targetStore.envioGratisDesde && subStore >= targetStore.envioGratisDesde) ? 0 : (Number(targetStore.precioEnvio) || 0))
-            : 0;
-          const totalStore = subStore + shipStore;
-
-          const lines = firstItems.map(i => `• ${i.cantidad}x ${i.nombre} (${formatARS(i.precio * i.cantidad)})`).join('\n');
-          const waText = `Hola ${targetStore.nombre}, quiero hacer este pedido desde Mercado Tres Arroyos:\n\n${lines}\n\nSubtotal: ${formatARS(subStore)}\nEnvío: ${formatARS(shipStore)}\nTotal: ${formatARS(totalStore)}\n\nNombre: ${customerName}\nBarrio: ${customerBarrio}\nDirección: ${customerAddress}${customerNote ? `\nNota: ${customerNote}` : ''}`;
-
-          const newOrder = {
-            id: 'PED-' + Math.floor(1000 + Math.random() * 9000),
-            tiendaId: firstStoreId,
-            tiendaNombre: targetStore.nombre,
-            cliente: customerName,
-            barrio: customerBarrio,
-            direccion: customerAddress,
-            nota: customerNote,
-            fecha: 'Hoy ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
-            estado: 'Nuevo',
-            esNuevoNoVisto: true,
-            total: totalStore,
-            items: firstItems.map(i => ({
-              productoId: i.productoId,
-              nombre: i.nombre,
-              cantidad: i.cantidad,
-              precioUnitario: i.precio,
-              foto: i.foto
-            }))
-          };
-
-          db.pedidos.unshift(newOrder);
-          db.misPedidosCliente.unshift({
-            id: newOrder.id,
-            tiendaId: firstStoreId,
-            tiendaNombre: targetStore.nombre,
-            total: totalStore,
-            resumenItems: firstItems.map(i => `${i.cantidad}x ${i.nombre}`).join(', '),
-            items: newOrder.items
-          });
-
-          db.carrito = [];
-          ui.cartOpen = false;
-          saveState(db);
-          pushToSheet('createOrder', newOrder);
-          render();
-          openWhatsAppUrl(targetStore.whatsapp, waText);
-        };
+    window.__quickLoginVendor = function (email, pass) {
+      const st = db.tiendas.find(t => t.email === email && t.password === pass);
+      if (st) {
+        ui.session = { role: 'VENDOR', storeId: st.id };
+        closeModal();
+        showToast(`Ingresaste como ${st.nombre}`, 'success');
+        navigate('PANEL_TIENDA');
       }
+    };
 
+    window.__quickLoginAdmin = function () {
+      ui.session = { role: 'ADMIN' };
+      closeModal();
+      showToast('Ingresaste como Administrador', 'success');
+      navigate('PANEL_ADMIN');
+    };
+
+    window.__vendorToggleOpen = function (storeId) {
+      const st = getStoreById(storeId);
+      if (!st) return;
+      st.abiertoAhora = !st.abiertoAhora;
+      saveState(db);
+      pushToSheet('updateStore', { tienda: st });
+      showToast(st.abiertoAhora ? 'Tu tienda ahora figura ABIERTA.' : 'Tu tienda ahora figura CERRADA.', 'success');
+      render();
+    };
+
+    window.__vendorUploadStoreMedia = async function (event, field) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
+      if (!store) return;
+      try {
+        const dataUrl = await readImageFileAsDataUrl(file);
+        store[field] = dataUrl;
+        saveState(db);
+        showToast(`${field === 'logo' ? 'Logo' : 'Portada'} actualizado.`, 'success');
+        render();
+      } catch (err) {
+        showToast(err.message || 'No se pudo cargar la imagen.', 'error');
+      }
+    };
+
+    window.__vendorClearStoreMedia = function (field) {
+      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
+      if (!store) return;
+      store[field] = '';
+      saveState(db);
+      render();
+    };
+
+    window.__vendorCopyFirstDayHours = function () {
+      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
+      if (!store) return;
+      const firstOpen = document.querySelector('[data-day-open="Lunes"]')?.checked ?? true;
+      const firstStart = document.querySelector('[data-day-start="Lunes"]')?.value || '09:00';
+      const firstEnd = document.querySelector('[data-day-end="Lunes"]')?.value || '20:00';
+      const daysList = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+      store.horariosSemana = store.horariosSemana || {};
+      daysList.forEach(d => {
+        store.horariosSemana[d] = { abierto: firstOpen, apertura: firstStart, cierre: firstEnd };
+      });
+      saveState(db);
+      showToast('Horario copiado a todos los días.', 'success');
+      render();
+    };
+
+    window.__vendorOpenNewProductForm = function (storeId) {
+      const st = getStoreById(storeId);
+      ui.productFormDraft = {
+        id: null,
+        tiendaId: storeId,
+        nombre: '',
+        precio: 10000,
+        precioOferta: null,
+        esNuevo: false,
+        stockDisponible: true,
+        cantidadStock: null,
+        categoria: st ? st.rubro : 'Dulces',
+        descripcion: '',
+        fotos: [SAMPLE_FALLBACK_PHOTO]
+      };
+      ui.showProductForm = true;
+      render();
+    };
+
+    window.__vendorEditProduct = function (productId) {
+      const p = db.productos.find(x => x.id === productId);
+      if (!p) return;
+      ui.productFormDraft = {
+        ...p,
+        fotos: Array.isArray(p.fotos) && p.fotos.length > 0 ? [...p.fotos] : [SAMPLE_FALLBACK_PHOTO]
+      };
+      ui.showProductForm = true;
+      render();
+    };
+
+    window.__vendorUploadProductPhotos = async function (event) {
+      const files = Array.from(event.target.files || []);
+      if (!files.length || !ui.productFormDraft) return;
+      const current = Array.isArray(ui.productFormDraft.fotos) ? [...ui.productFormDraft.fotos] : [];
+      for (const f of files) {
+        if (current.length >= 3) break;
+        try {
+          const dataUrl = await readImageFileAsDataUrl(f);
+          current.push(dataUrl);
+        } catch (_) {}
+      }
+      ui.productFormDraft.fotos = current.slice(0, 3);
+      showToast('Fotos cargadas desde galería.', 'success');
+      render();
+    };
+
+    window.__vendorMoveProductPhoto = function (idx, delta) {
+      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
+      const arr = ui.productFormDraft.fotos;
+      const target = idx + delta;
+      if (target < 0 || target >= arr.length) return;
+      [arr[idx], arr[target]] = [arr[target], arr[idx]];
+      render();
+    };
+
+    window.__vendorRemoveProductPhoto = function (idx) {
+      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
+      ui.productFormDraft.fotos.splice(idx, 1);
+      if (ui.productFormDraft.fotos.length === 0) {
+        ui.productFormDraft.fotos.push(SAMPLE_FALLBACK_PHOTO);
+      }
+      render();
+    };
+
+    window.__vendorToggleProductOffer = function (productId) {
+      const p = db.productos.find(x => x.id === productId);
+      if (!p) return;
+      const existingIdx = db.ofertas.findIndex(o => o.productoId === productId);
+      if (existingIdx !== -1 || (p.precioOferta && p.precioOferta < p.precio)) {
+        db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
+        p.precioOferta = null;
+        saveState(db);
+        showToast('Oferta quitada.', 'info');
+        render();
+      } else {
+        const suggested = Math.max(100, Math.round((p.precio * 0.8) / 100) * 100);
+        p.precioOferta = suggested;
+        db.ofertas.unshift({
+          id: 'of-' + Date.now(),
+          productoId: p.id,
+          precioOferta: suggested,
+          hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+          destacada: false
+        });
+        saveState(db);
+        pushToSheet('upsertOffer', { productoId: p.id, precioOferta: suggested });
+        showToast(`Oferta activada a ${formatARS(suggested)}.`, 'success');
+        render();
+      }
+    };
+
+    window.__vendorDuplicateProduct = function (productId) {
+      const p = db.productos.find(x => x.id === productId);
+      if (!p) return;
+      const copy = {
+        ...p,
+        id: 'prod-' + Date.now(),
+        nombre: p.nombre + ' (Copia)',
+        fotos: Array.isArray(p.fotos) ? [...p.fotos] : [SAMPLE_FALLBACK_PHOTO]
+      };
+      db.productos.unshift(copy);
+      saveState(db);
+      pushToSheet('upsertProduct', copy);
+      showToast('Producto duplicado.', 'success');
+      render();
+    };
+
+    window.__vendorMoveProduct = function (productId, delta) {
+      const idx = db.productos.findIndex(p => p.id === productId);
+      if (idx === -1) return;
+      const target = idx + delta;
+      if (target < 0 || target >= db.productos.length) return;
+      [db.productos[idx], db.productos[target]] = [db.productos[target], db.productos[idx]];
+      saveState(db);
+      render();
+    };
+
+    window.__vendorAskDeleteProduct = function (productId) {
+      const p = db.productos.find(x => x.id === productId);
+      if (!p) return;
+      openModal(`
+        <div>
+          <h3 class="font-extrabold text-lg text-[#111111]">¿Borrar "${escapeHtml(p.nombre)}"?</h3>
+          <p class="text-sm text-[#666666] mt-1">Esta acción eliminará el producto de tu catálogo.</p>
+          <div class="mt-5 flex items-center justify-end gap-2.5">
+            <button type="button" onclick="closeModal()" class="min-h-[44px] px-4 py-2 rounded-xl bg-slate-100 font-bold text-sm">Cancelar</button>
+            <button type="button" onclick="window.__vendorConfirmDeleteProduct('${productId}')" class="min-h-[44px] px-5 py-2 rounded-xl bg-[#E53935] text-white font-extrabold text-sm">Borrar</button>
+          </div>
+        </div>
+      `);
+    };
+
+    window.__vendorConfirmDeleteProduct = function (productId) {
+      db.productos = db.productos.filter(p => p.id !== productId);
+      db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
+      saveState(db);
+      closeModal();
+      showToast('Producto eliminado.', 'info');
+      render();
+    };
+
+    window.__vendorMarkAllOrdersSeen = function (storeId) {
+      db.pedidos.forEach(o => {
+        if (o.tiendaId === storeId) o.esNuevoNoVisto = false;
+      });
+      saveState(db);
+      render();
+    };
+
+    window.__vendorSetOrderStatus = function (orderId, newStatus) {
+      const ord = db.pedidos.find(o => o.id === orderId);
+      if (!ord) return;
+      ord.estado = newStatus;
+      ord.esNuevoNoVisto = false;
+      saveState(db);
+      showToast(`Pedido marcado como ${newStatus}.`, 'success');
+      render();
+    };
+
+    window.__adminSetStoreStatus = function (storeId, status) {
+      const st = getStoreById(storeId);
+      if (!st) return;
+      st.estadoSuscripcion = status;
+      saveState(db);
+      pushToSheet('updateStore', { tienda: st });
+      showToast(`Estado de ${st.nombre}: ${status}`, 'success');
+      render();
+    };
+
+    window.__adminToggleVerified = function (storeId) {
+      const st = getStoreById(storeId);
+      if (!st) return;
+      st.verificado = !st.verificado;
+      saveState(db);
+      pushToSheet('updateStore', { tienda: st });
+      showToast(`${st.nombre}: ${st.verificado ? 'Verificado activado' : 'Verificado quitado'}`, 'success');
+      render();
+    };
+
+    window.__adminDeleteSampleStores = function () {
+      const sampleIds = ['tienda-maru', 'tienda-don-juan', 'tienda-luna', 'tienda-huellas', 'tienda-deco-hogar'];
+      db.tiendas = db.tiendas.filter(t => !sampleIds.includes(t.id));
+      db.productos = db.productos.filter(p => !sampleIds.includes(p.tiendaId));
+      ensureDemoTemplateExists();
+      saveState(db);
+      showToast('Tiendas de ejemplo eliminadas. Plantilla guía preservada.', 'info');
+      render();
+    };
+
+    window.__adminFeatureOffer = function (offerId) {
+      const off = db.ofertas.find(o => o.id === offerId);
+      if (!off) return;
+      off.destacada = !off.destacada;
+      saveState(db);
+      showToast(off.destacada ? 'Oferta destacada.' : 'Oferta normal.', 'success');
+      render();
+    };
+
+    window.__adminEndOffer = function (offerId) {
+      const off = db.ofertas.find(o => o.id === offerId);
+      if (off) {
+        const prod = db.productos.find(p => p.id === off.productoId);
+        if (prod) prod.precioOferta = null;
+      }
+      db.ofertas = db.ofertas.filter(o => o.id !== offerId);
+      saveState(db);
+      showToast('Oferta finalizada.', 'info');
+      render();
+    };
+
+    function bindDynamicForms() {
       const reg1 = document.getElementById('reg-step-1-form');
       if (reg1) {
         reg1.onsubmit = (e) => {
           e.preventDefault();
-          if (!ui.regDraft.nombre.trim() || !ui.regDraft.whatsapp.trim() || !ui.regDraft.email.trim() || !ui.regDraft.password.trim()) {
-            showToast('Completá los campos obligatorios del paso 1.', 'error');
+          if (!ui.regDraft.nombre.trim() || !ui.regDraft.whatsapp.trim()) {
+            showToast('Completá nombre y WhatsApp.', 'error');
             return;
           }
           ui.regStep = 2;
@@ -4413,32 +4602,29 @@
         reg3.onsubmit = (e) => {
           e.preventDefault();
           const d = ui.regDraft;
-          if (!d.prodNombre.trim() || !d.prodPrecio || Number(d.prodPrecio) <= 0) {
-            showToast('Completá el nombre y precio del primer producto.', 'error');
+          if (!d.prodNombre.trim() || !(Number(d.prodPrecio) > 0)) {
+            showToast('Completá nombre y precio del primer producto.', 'error');
             return;
           }
 
-          const newStoreId = 'tienda-' + Date.now();
-          const baseSlug = slugify(d.nombre);
-          const uniqueSlug = db.tiendas.some(t => t.slug === baseSlug) ? `${baseSlug}-${Math.floor(10 + Math.random() * 89)}` : baseSlug;
-          const todayISO = new Date().toISOString().split('T')[0];
-
+          const storeId = 'tienda-' + Date.now();
+          const storeSlug = slugify(d.nombre);
           const newStore = {
-            id: newStoreId,
-            slug: uniqueSlug,
+            id: storeId,
+            slug: db.tiendas.some(t => t.slug === storeSlug) ? `${storeSlug}-${Math.floor(10 + Math.random() * 89)}` : storeSlug,
             nombre: d.nombre.trim().toUpperCase(),
             dueno: d.nombre.trim(),
-            email: d.email.trim().toLowerCase(),
-            password: d.password.trim(),
+            email: (d.email || '').trim().toLowerCase(),
+            password: (d.password || '123456').trim(),
             esPlantillaDemo: false,
-            rubro: d.rubro,
-            barrio: d.barrio,
-            direccion: d.barrio,
+            rubro: d.rubro || 'Otros',
+            barrio: d.barrio || 'Centro',
+            direccion: d.barrio || 'Centro',
             whatsapp: normalizeWhatsAppPhone(d.whatsapp),
             instagram: '',
             logo: d.logo || makeSvgFallbackDataUri(d.nombre, '#1A2A44'),
             portada: d.portada || makeSvgFallbackDataUri(d.nombre, '#2E7D32'),
-            descripcion: d.descripcion.trim() || `Emprendimiento de ${d.rubro} en ${d.barrio}, Tres Arroyos.`,
+            descripcion: (d.descripcion || 'Emprendimiento local en Tres Arroyos.').trim(),
             antiguedadTexto: 'Nueva tienda en Tres Arroyos',
             rating: 5.0,
             reviewCount: 0,
@@ -4450,31 +4636,31 @@
             haceEnvios: Boolean(d.haceEnvios),
             envioHoy: Boolean(d.haceEnvios),
             precioEnvio: Number(d.precioEnvio) || 1500,
-            envioGratisDesde: 25000,
+            envioGratisDesde: 0,
             aceptaEncargo: false,
             metodosPago: ['Efectivo', 'Transferencia'],
             estadoSuscripcion: 'ACTIVA',
-            fechaRegistro: todayISO,
+            fechaRegistro: new Date().toISOString().split('T')[0],
             horariosSemana: makeDefaultHours('09:00', '20:00', false)
           };
 
           const firstProd = {
             id: 'prod-' + Date.now(),
-            tiendaId: newStoreId,
+            tiendaId: storeId,
             nombre: d.prodNombre.trim(),
             precio: Number(d.prodPrecio),
             precioOferta: null,
             esNuevo: true,
             stockDisponible: true,
-            cantidadStock: 10,
-            categoria: d.rubro,
-            descripcion: `Producto inicial de ${newStore.nombre} en Tres Arroyos.`,
+            cantidadStock: null,
+            categoria: newStore.rubro,
+            descripcion: 'Producto publicado en Mercado Tres Arroyos.',
             fotos: [d.prodFoto || makeSvgFallbackDataUri(d.prodNombre, '#1A2A44')]
           };
 
           db.tiendas.unshift(newStore);
           db.productos.unshift(firstProd);
-          ui.session = { role: 'VENDOR', storeId: newStoreId };
+          ui.session = { role: 'VENDOR', storeId: newStore.id };
           ui.regStep = 1;
           ui.regDraft = {
             nombre: '',
@@ -4497,7 +4683,7 @@
           saveState(db);
           pushToSheet('registerStore', { tienda: newStore, productoInicial: firstProd });
           showToast('¡Tu tienda ya está publicada!', 'success');
-          navigate('TIENDA_PERFIL', { storeSlug: uniqueSlug });
+          navigate('TIENDA_PERFIL', { storeSlug: newStore.slug });
         };
       }
 
@@ -4508,422 +4694,295 @@
           const currentStore = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
           if (!currentStore) return;
 
+          const newName = document.getElementById('v-store-name').value.trim().toUpperCase();
+          const newRubro = document.getElementById('v-store-rubro').value;
+          const newEmail = document.getElementById('v-store-email').value.trim().toLowerCase();
+          const newPass = document.getElementById('v-store-password').value.trim();
+          const newDesc = document.getElementById('v-store-desc').value.trim();
+          const newBarrio = document.getElementById('v-store-barrio').value;
+          const newDir = document.getElementById('v-store-dir').value.trim();
+          const newWa = document.getElementById('v-store-wa').value.trim();
+          const newIg = document.getElementById('v-store-ig').value.trim();
+          const newHoursText = document.getElementById('v-store-hours-text').value.trim();
+          const newShipping = document.getElementById('v-store-shipping').checked;
+          const newShipPrice = Number(document.getElementById('v-store-ship-price').value) || 0;
+          const newShipFree = Number(document.getElementById('v-store-ship-free').value) || 0;
+          const newEncargo = document.getElementById('v-store-encargo').checked;
+
+          const payMethods = [];
+          document.querySelectorAll('[data-pay-method]').forEach(cb => {
+            if (cb.checked) payMethods.push(cb.getAttribute('data-pay-method'));
+          });
+
           const daysList = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-          const horariosSemana = {};
-          daysList.forEach(day => {
-            const openEl = vendorStoreForm.querySelector(`[data-day-open="${day}"]`);
-            const startEl = vendorStoreForm.querySelector(`[data-day-start="${day}"]`);
-            const endEl = vendorStoreForm.querySelector(`[data-day-end="${day}"]`);
-            horariosSemana[day] = {
-              abierto: openEl ? openEl.checked : true,
-              apertura: startEl ? startEl.value : '09:00',
-              cierre: endEl ? endEl.value : '20:00'
+          const updatedHours = {};
+          daysList.forEach(d => {
+            updatedHours[d] = {
+              abierto: document.querySelector(`[data-day-open="${d}"]`)?.checked ?? true,
+              apertura: document.querySelector(`[data-day-start="${d}"]`)?.value || '09:00',
+              cierre: document.querySelector(`[data-day-end="${d}"]`)?.value || '20:00'
             };
           });
 
-          const metodosPago = [];
-          vendorStoreForm.querySelectorAll('[data-pay-method]').forEach(cb => {
-            if (cb.checked) metodosPago.push(cb.getAttribute('data-pay-method'));
-          });
-
-          const updatedFields = {
-            nombre: (document.getElementById('v-store-name').value || currentStore.nombre).trim().toUpperCase(),
-            rubro: document.getElementById('v-store-rubro').value,
-            email: (document.getElementById('v-store-email').value || currentStore.email).trim().toLowerCase(),
-            password: (document.getElementById('v-store-password').value || currentStore.password).trim(),
-            descripcion: (document.getElementById('v-store-desc').value || '').trim(),
-            barrio: document.getElementById('v-store-barrio').value,
-            direccion: (document.getElementById('v-store-dir').value || '').trim(),
-            whatsapp: normalizeWhatsAppPhone(document.getElementById('v-store-wa').value || currentStore.whatsapp),
-            instagram: (document.getElementById('v-store-ig').value || '').trim(),
-            horarioTexto: (document.getElementById('v-store-hours-text').value || '').trim(),
-            haceEnvios: document.getElementById('v-store-shipping').checked,
-            envioHoy: document.getElementById('v-store-shipping').checked,
-            precioEnvio: Number(document.getElementById('v-store-ship-price').value) || 0,
-            envioGratisDesde: Number(document.getElementById('v-store-ship-free').value) || 0,
-            aceptaEncargo: document.getElementById('v-store-encargo').checked,
-            metodosPago: metodosPago.length > 0 ? metodosPago : ['Efectivo', 'Transferencia'],
-            horariosSemana
+          const patch = {
+            nombre: newName || currentStore.nombre,
+            rubro: newRubro,
+            email: newEmail || currentStore.email,
+            password: newPass || currentStore.password,
+            descripcion: newDesc,
+            barrio: newBarrio,
+            direccion: newDir,
+            whatsapp: normalizeWhatsAppPhone(newWa || currentStore.whatsapp),
+            instagram: newIg,
+            horarioTexto: newHoursText,
+            haceEnvios: newShipping,
+            envioHoy: newShipping,
+            precioEnvio: newShipPrice,
+            envioGratisDesde: newShipFree,
+            aceptaEncargo: newEncargo,
+            metodosPago: payMethods.length > 0 ? payMethods : ['Efectivo'],
+            horariosSemana: updatedHours
           };
 
           if (isTemplateStore(currentStore)) {
-            const mat = materializeOwnStoreFromTemplate(currentStore, updatedFields);
-            if (mat.cloned) {
-              showToast(`¡Listo! Se guardó "${mat.store.nombre}" como tu tienda propia y la plantilla guía sigue disponible.`, 'success');
+            const matResult = materializeOwnStoreFromTemplate(currentStore, patch);
+            if (matResult.cloned) {
+              showToast(`¡Listo! Se creó tu tienda "${matResult.store.nombre}" con tus datos y la plantilla guía quedó intacta.`, 'success');
               render();
               return;
             }
           }
 
-          Object.assign(currentStore, updatedFields);
+          Object.assign(currentStore, patch);
           saveState(db);
-          pushToSheet('updateStore', currentStore);
-          showToast('Cambios guardados.', 'success');
+          pushToSheet('updateStore', { tienda: currentStore });
+          showToast('Cambios guardados en tu tienda.', 'success');
           render();
         };
       }
 
-      const vendorProdForm = document.getElementById('vendor-product-form');
-      if (vendorProdForm && ui.productFormDraft) {
-        vendorProdForm.onsubmit = (e) => {
+      const prodForm = document.getElementById('vendor-product-form');
+      if (prodForm && ui.productFormDraft) {
+        prodForm.onsubmit = (e) => {
           e.preventDefault();
-          const draft = ui.productFormDraft;
-          if (!draft.nombre || !draft.nombre.trim() || !draft.precio || Number(draft.precio) <= 0) {
-            showToast('Completá nombre y precio válido.', 'error');
+          const d = ui.productFormDraft;
+          if (!d.nombre.trim() || !(Number(d.precio) > 0)) {
+            showToast('Completá nombre y precio.', 'error');
             return;
           }
 
-          const hasValidOffer = draft.precioOferta && Number(draft.precioOferta) > 0 && Number(draft.precioOferta) < Number(draft.precio);
-          const cleanPhotos = (Array.isArray(draft.fotos) && draft.fotos.length > 0)
-            ? draft.fotos.slice(0, 3)
-            : [makeSvgFallbackDataUri(draft.nombre, '#1A2A44')];
+          const cleanOffer = (d.precioOferta && Number(d.precioOferta) > 0 && Number(d.precioOferta) < Number(d.precio))
+            ? Number(d.precioOferta)
+            : null;
 
-          const prodPayload = {
-            id: draft.id || ('prod-' + Date.now()),
-            tiendaId: draft.tiendaId,
-            nombre: draft.nombre.trim(),
-            precio: Number(draft.precio),
-            precioOferta: hasValidOffer ? Number(draft.precioOferta) : null,
-            esNuevo: Boolean(draft.esNuevo),
-            stockDisponible: Boolean(draft.stockDisponible),
-            cantidadStock: (draft.cantidadStock === '' || draft.cantidadStock === null || draft.cantidadStock === undefined) ? null : Number(draft.cantidadStock),
-            categoria: draft.categoria || 'Otros',
-            descripcion: (draft.descripcion || '').trim(),
-            fotos: cleanPhotos
-          };
+          const photos = (Array.isArray(d.fotos) && d.fotos.length > 0) ? d.fotos.slice(0, 3) : [SAMPLE_FALLBACK_PHOTO];
 
-          const existingIdx = db.productos.findIndex(p => p.id === prodPayload.id);
-          if (existingIdx >= 0) {
-            db.productos[existingIdx] = prodPayload;
+          if (d.id) {
+            const idx = db.productos.findIndex(p => p.id === d.id);
+            if (idx !== -1) {
+              db.productos[idx] = {
+                ...db.productos[idx],
+                nombre: d.nombre.trim(),
+                precio: Number(d.precio),
+                precioOferta: cleanOffer,
+                esNuevo: Boolean(d.esNuevo),
+                stockDisponible: Boolean(d.stockDisponible),
+                cantidadStock: d.cantidadStock === '' || d.cantidadStock === null ? null : Number(d.cantidadStock),
+                categoria: d.categoria || 'Otros',
+                descripcion: (d.descripcion || '').trim(),
+                fotos: photos
+              };
+              if (cleanOffer) {
+                const existingOffer = db.ofertas.find(o => o.productoId === d.id);
+                if (existingOffer) {
+                  existingOffer.precioOferta = cleanOffer;
+                } else {
+                  db.ofertas.unshift({
+                    id: 'of-' + Date.now(),
+                    productoId: d.id,
+                    precioOferta: cleanOffer,
+                    hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+                    destacada: false
+                  });
+                }
+              } else {
+                db.ofertas = db.ofertas.filter(o => o.productoId !== d.id);
+              }
+              pushToSheet('upsertProduct', db.productos[idx]);
+              showToast('Producto actualizado.', 'success');
+            }
           } else {
-            db.productos.unshift(prodPayload);
-          }
-
-          db.ofertas = db.ofertas.filter(o => o.productoId !== prodPayload.id);
-          if (hasValidOffer) {
-            db.ofertas.unshift({
-              id: 'of-' + Date.now(),
-              productoId: prodPayload.id,
-              precioOferta: Number(draft.precioOferta),
-              hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
-              destacada: false
-            });
+            const newProd = {
+              id: 'prod-' + Date.now(),
+              tiendaId: d.tiendaId,
+              nombre: d.nombre.trim(),
+              precio: Number(d.precio),
+              precioOferta: cleanOffer,
+              esNuevo: Boolean(d.esNuevo),
+              stockDisponible: Boolean(d.stockDisponible),
+              cantidadStock: d.cantidadStock === '' || d.cantidadStock === null ? null : Number(d.cantidadStock),
+              categoria: d.categoria || 'Otros',
+              descripcion: (d.descripcion || '').trim(),
+              fotos: photos
+            };
+            db.productos.unshift(newProd);
+            if (cleanOffer) {
+              db.ofertas.unshift({
+                id: 'of-' + Date.now(),
+                productoId: newProd.id,
+                precioOferta: cleanOffer,
+                hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+                destacada: false
+              });
+            }
+            pushToSheet('upsertProduct', newProd);
+            showToast('Producto agregado al catálogo.', 'success');
           }
 
           ui.showProductForm = false;
           ui.productFormDraft = null;
           saveState(db);
-          pushToSheet('saveProduct', prodPayload);
-          showToast('Producto guardado.', 'success');
           render();
+        };
+      }
+
+      const cartForm = document.getElementById('cart-checkout-form');
+      if (cartForm) {
+        cartForm.onsubmit = (e) => {
+          e.preventDefault();
+          if (db.carrito.length === 0) return;
+
+          const cliente = document.getElementById('cart-customer-name').value.trim();
+          const barrio = document.getElementById('cart-customer-barrio').value;
+          const direccion = document.getElementById('cart-customer-address').value.trim();
+          const nota = document.getElementById('cart-customer-note').value.trim();
+
+          if (!cliente || !direccion) {
+            showToast('Completá tu nombre y dirección.', 'error');
+            return;
+          }
+
+          const byStore = new Map();
+          db.carrito.forEach(item => {
+            if (!byStore.has(item.tiendaId)) byStore.set(item.tiendaId, []);
+            byStore.get(item.tiendaId).push(item);
+          });
+
+          const timeLabel = 'Hoy ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+          let firstWaUrl = '';
+
+          byStore.forEach((items, storeId) => {
+            const st = getStoreById(storeId) || { id: storeId, nombre: 'Tienda', whatsapp: SUPPORT_WHATSAPP, haceEnvios: true, precioEnvio: 1500 };
+            const sub = items.reduce((s, i) => s + i.precio * i.cantidad, 0);
+            const ship = st.haceEnvios ? ((st.envioGratisDesde && sub >= st.envioGratisDesde) ? 0 : (Number(st.precioEnvio) || 0)) : 0;
+            const totalTienda = sub + ship;
+            const orderId = 'PED-' + Math.floor(1000 + Math.random() * 9000);
+
+            const newOrder = {
+              id: orderId,
+              tiendaId: st.id,
+              tiendaNombre: st.nombre,
+              cliente,
+              barrio,
+              direccion,
+              nota,
+              fecha: timeLabel,
+              estado: 'Nuevo',
+              esNuevoNoVisto: true,
+              total: totalTienda,
+              items: items.map(i => ({
+                productoId: i.productoId,
+                nombre: i.nombre,
+                cantidad: i.cantidad,
+                precioUnitario: i.precio,
+                foto: i.foto
+              }))
+            };
+
+            db.pedidos.unshift(newOrder);
+            db.misPedidosCliente.unshift({
+              id: orderId,
+              tiendaId: st.id,
+              tiendaNombre: st.nombre,
+              total: totalTienda,
+              resumenItems: items.map(i => `${i.cantidad}x ${i.nombre}`).join(', '),
+              items: newOrder.items
+            });
+            pushToSheet('createOrder', newOrder);
+
+            const lines = [
+              `Hola ${st.nombre}, quiero hacer el siguiente pedido desde Mercado Tres Arroyos:`,
+              '',
+              ...items.map(i => `• ${i.cantidad}x ${i.nombre} — ${formatARS(i.precio * i.cantidad)}`),
+              '',
+              `Subtotal: ${formatARS(sub)}`,
+              `Envío: ${formatARS(ship)}`,
+              `Total: ${formatARS(totalTienda)}`,
+              '',
+              `Nombre: ${cliente}`,
+              `Barrio: ${barrio}`,
+              `Dirección: ${direccion}`
+            ];
+            if (nota) lines.push(`Nota: ${nota}`);
+
+            const waUrl = buildWhatsAppLink(st.whatsapp, lines.join('\n'));
+            if (!firstWaUrl) firstWaUrl = waUrl;
+          });
+
+          db.carrito = [];
+          ui.cartOpen = false;
+          saveState(db);
+          showToast('¡Pedido registrado! Abriendo WhatsApp...', 'success');
+          render();
+
+          if (firstWaUrl) {
+            window.open(firstWaUrl, '_blank', 'noopener,noreferrer');
+          }
         };
       }
     }
 
-    // Funciones auxiliares para acciones desde botones
-    window.__vendorToggleOpen = function (storeId) {
-      const st = getStoreById(storeId);
-      if (!st) return;
-      st.abiertoAhora = !st.abiertoAhora;
-      saveState(db);
-      pushToSheet('updateStore', st);
-      showToast(st.abiertoAhora ? 'Tu tienda ahora figura ABIERTA.' : 'Tu tienda ahora figura CERRADA.', 'info');
-      render();
-    };
-
-    window.__vendorUploadStoreMedia = async function (event, field) {
-      const file = event.target.files && event.target.files[0];
-      if (!file) return;
-      const st = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
-      if (!st) return;
-      try {
-        const dataUrl = await readImageFileAsDataUrl(file);
-        st[field] = dataUrl;
-        saveState(db);
-        pushToSheet('updateStore', st);
-        showToast(`${field === 'logo' ? 'Logo' : 'Portada'} actualizada.`, 'success');
-        render();
-      } catch (err) {
-        showToast(err.message || 'No se pudo cargar la imagen.', 'error');
-      }
-    };
-
-    window.__vendorClearStoreMedia = function (field) {
-      const st = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
-      if (!st) return;
-      st[field] = makeSvgFallbackDataUri(st.nombre, field === 'logo' ? '#1A2A44' : '#2E7D32');
-      saveState(db);
-      showToast('Imagen restaurada.', 'info');
-      render();
-    };
-
-    window.__vendorCopyFirstDayHours = function () {
-      const form = document.getElementById('vendor-store-form');
-      const st = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
-      if (!form || !st) return;
-      const firstOpen = form.querySelector('[data-day-open="Lunes"]')?.checked ?? true;
-      const firstStart = form.querySelector('[data-day-start="Lunes"]')?.value || '09:00';
-      const firstEnd = form.querySelector('[data-day-end="Lunes"]')?.value || '20:00';
-      const daysList = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-      st.horariosSemana = st.horariosSemana || {};
-      daysList.forEach(d => {
-        st.horariosSemana[d] = { abierto: firstOpen, apertura: firstStart, cierre: firstEnd };
-      });
-      saveState(db);
-      showToast('Horario copiado a todos los días.', 'success');
-      render();
-    };
-
-    window.__vendorOpenNewProductForm = function (storeId) {
-      const st = getStoreById(storeId);
-      ui.productFormDraft = {
-        id: null,
-        tiendaId: storeId,
-        nombre: '',
-        precio: 10000,
-        precioOferta: null,
-        esNuevo: false,
-        stockDisponible: true,
-        cantidadStock: null,
-        categoria: st ? st.rubro : 'Otros',
-        descripcion: '',
-        fotos: []
-      };
-      ui.showProductForm = true;
-      render();
-    };
-
-    window.__vendorEditProduct = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      ui.productFormDraft = {
-        ...prod,
-        fotos: Array.isArray(prod.fotos) ? [...prod.fotos] : []
-      };
-      ui.showProductForm = true;
-      render();
-    };
-
-    window.__vendorUploadProductPhotos = async function (event) {
-      if (!ui.productFormDraft) return;
-      const files = Array.from(event.target.files || []);
-      if (files.length === 0) return;
-      const currentFotos = Array.isArray(ui.productFormDraft.fotos) ? [...ui.productFormDraft.fotos] : [];
-      for (const f of files) {
-        if (currentFotos.length >= 3) break;
-        try {
-          const dataUrl = await readImageFileAsDataUrl(f);
-          currentFotos.push(dataUrl);
-        } catch (_) {}
-      }
-      ui.productFormDraft.fotos = currentFotos.slice(0, 3);
-      showToast('Fotos cargadas desde galería.', 'success');
-      render();
-    };
-
-    window.__vendorMoveProductPhoto = function (index, delta) {
-      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
-      const arr = ui.productFormDraft.fotos;
-      const target = index + delta;
-      if (target < 0 || target >= arr.length) return;
-      const temp = arr[index];
-      arr[index] = arr[target];
-      arr[target] = temp;
-      render();
-    };
-
-    window.__vendorRemoveProductPhoto = function (index) {
-      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
-      ui.productFormDraft.fotos.splice(index, 1);
-      render();
-    };
-
-    window.__vendorMoveProduct = function (productId, delta) {
-      const idx = db.productos.findIndex(p => p.id === productId);
-      if (idx === -1) return;
-      const tiendaId = db.productos[idx].tiendaId;
-      for (let j = idx + delta; j >= 0 && j < db.productos.length; j += delta) {
-        if (db.productos[j].tiendaId === tiendaId) {
-          const tmp = db.productos[idx];
-          db.productos[idx] = db.productos[j];
-          db.productos[j] = tmp;
-          saveState(db);
-          render();
-          return;
-        }
-      }
-    };
-
-    window.__vendorToggleProductOffer = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      const existingOffer = getOfferForProduct(productId);
-      if (existingOffer || prod.precioOferta) {
-        prod.precioOferta = null;
-        db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
-        saveState(db);
-        pushToSheet('saveProduct', prod);
-        showToast('Oferta quitada.', 'info');
-        render();
-      } else {
-        const suggestedOffer = Math.max(100, Math.round((prod.precio * 0.8) / 100) * 100);
-        prod.precioOferta = suggestedOffer;
-        db.ofertas.unshift({
-          id: 'of-' + Date.now(),
-          productoId: prod.id,
-          precioOferta: suggestedOffer,
-          hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
-          destacada: false
-        });
-        saveState(db);
-        pushToSheet('saveProduct', prod);
-        showToast(`Oferta activada a ${formatARS(suggestedOffer)}.`, 'success');
-        render();
-      }
-    };
-
-    window.__vendorDuplicateProduct = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      const copy = {
-        ...prod,
-        id: 'prod-' + Date.now(),
-        nombre: `${prod.nombre} (copia)`,
-        fotos: Array.isArray(prod.fotos) ? [...prod.fotos] : [SAMPLE_FALLBACK_PHOTO]
-      };
-      db.productos.unshift(copy);
-      saveState(db);
-      pushToSheet('saveProduct', copy);
-      showToast('Producto duplicado.', 'success');
-      render();
-    };
-
-    window.__vendorAskDeleteProduct = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      openModal(`
-        <div>
-          <h3 class="font-extrabold text-lg text-[#111111]">¿Borrar "${escapeHtml(prod.nombre)}"?</h3>
-          <p class="text-sm text-[#666666] mt-1">Esta acción eliminará el producto del catálogo.</p>
-          <div class="mt-5 flex items-center justify-end gap-2.5">
-            <button type="button" onclick="closeModal()" class="min-h-[44px] px-4 py-2 rounded-xl bg-slate-100 font-bold text-sm">Cancelar</button>
-            <button type="button" onclick="window.__vendorConfirmDeleteProduct('${prod.id}')" class="min-h-[44px] px-5 py-2 rounded-xl bg-[#E53935] text-white font-bold text-sm">Borrar</button>
-          </div>
-        </div>
-      `);
-    };
-
-    window.__vendorConfirmDeleteProduct = function (productId) {
-      db.productos = db.productos.filter(p => p.id !== productId);
-      db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
-      saveState(db);
-      pushToSheet('deleteProduct', { id: productId });
-      closeModal();
-      showToast('Producto borrado.', 'info');
-      render();
-    };
-
-    window.__vendorSetOrderStatus = function (orderId, newStatus) {
-      const ord = db.pedidos.find(o => o.id === orderId);
-      if (!ord) return;
-      ord.estado = newStatus;
-      ord.esNuevoNoVisto = false;
-      saveState(db);
-      pushToSheet('updateOrderStatus', { id: orderId, estado: newStatus });
-      showToast(`Pedido marcado como ${newStatus}.`, 'success');
-      render();
-    };
-
-    window.__vendorMarkAllOrdersSeen = function (storeId) {
-      db.pedidos.forEach(o => {
-        if (o.tiendaId === storeId) o.esNuevoNoVisto = false;
-      });
-      saveState(db);
-      render();
-    };
-
-    window.__adminSetStoreStatus = function (storeId, status) {
-      const st = getStoreById(storeId);
-      if (!st) return;
-      if (isTemplateStore(st)) {
-        st.estadoSuscripcion = 'ACTIVA';
-        saveState(db);
-        showToast('La tienda plantilla guía permanece siempre ACTIVA.', 'info');
-        render();
-        return;
-      }
-      st.estadoSuscripcion = status;
-      saveState(db);
-      pushToSheet('updateStoreStatus', { id: storeId, estadoSuscripcion: status });
-      showToast(`Estado de ${st.nombre}: ${status}`, 'success');
-      render();
-    };
-
-    window.__adminToggleVerified = function (storeId) {
-      const st = getStoreById(storeId);
-      if (!st) return;
-      st.verificado = !st.verificado;
-      saveState(db);
-      pushToSheet('updateStore', st);
-      showToast(`${st.nombre}: ${st.verificado ? 'Verificado activado' : 'Verificado quitado'}.`, 'success');
-      render();
-    };
-
-    window.__adminFeatureOffer = function (offerId) {
-      db.ofertas.forEach(o => {
-        o.destacada = (o.id === offerId);
-      });
-      saveState(db);
-      showToast('Oferta destacada actualizada.', 'success');
-      render();
-    };
-
-    window.__adminEndOffer = function (offerId) {
-      const off = db.ofertas.find(o => o.id === offerId);
-      if (off) {
-        const prod = db.productos.find(p => p.id === off.productoId);
-        if (prod) prod.precioOferta = null;
-      }
-      db.ofertas = db.ofertas.filter(o => o.id !== offerId);
-      saveState(db);
-      showToast('Oferta finalizada.', 'info');
-      render();
-    };
-
-    window.__adminDeleteSampleStores = function () {
-      const sampleIds = ['tienda-maru', 'tienda-don-juan', 'tienda-luna', 'tienda-huellas', 'tienda-deco-hogar'];
-      db.tiendas = db.tiendas.filter(t => !sampleIds.includes(t.id));
-      db.productos = db.productos.filter(p => !sampleIds.includes(p.tiendaId));
-      ensureDemoTemplateExists();
-      saveState(db);
-      showToast('Tiendas de ejemplo eliminadas (se conserva la plantilla guía).', 'info');
-      render();
-    };
-
-    // Render principal
     function render() {
       const appEl = document.getElementById('app');
       if (!appEl) return;
 
-      let pageContent = '';
-      if (ui.route === 'INICIO') pageContent = renderHome();
-      else if (ui.route === 'TIENDAS') pageContent = renderStoresDirectory();
-      else if (ui.route === 'OFERTAS') pageContent = renderOffersPage();
-      else if (ui.route === 'QUIERO_VENDER') pageContent = renderRegisterStoreWizard();
-      else if (ui.route === 'TIENDA_PERFIL') pageContent = renderStoreProfile();
-      else if (ui.route === 'PANEL_TIENDA') pageContent = renderVendorPanel();
-      else if (ui.route === 'PANEL_ADMIN') pageContent = renderAdminPanel();
-      else pageContent = renderHome();
+      let screenHtml = '';
+      switch (ui.route) {
+        case 'TIENDAS':
+          screenHtml = renderStoresDirectory();
+          break;
+        case 'OFERTAS':
+          screenHtml = renderOffersPage();
+          break;
+        case 'QUIERO_VENDER':
+          screenHtml = renderRegisterStoreWizard();
+          break;
+        case 'TIENDA_PERFIL':
+          screenHtml = renderStoreProfile();
+          break;
+        case 'PANEL_TIENDA':
+          screenHtml = renderVendorPanel();
+          break;
+        case 'PANEL_ADMIN':
+          screenHtml = renderAdminPanel();
+          break;
+        case 'INICIO':
+        default:
+          screenHtml = renderHome();
+          break;
+      }
+
+      const showFloatingCart = !ui.cartOpen && ui.route !== 'PANEL_TIENDA' && ui.route !== 'PANEL_ADMIN';
 
       appEl.innerHTML = `
         ${renderHeader()}
-        ${pageContent}
+        ${screenHtml}
         ${renderFooter()}
-        ${renderFloatingCartButton()}
+        ${showFloatingCart ? renderFloatingCartButton() : ''}
         ${renderCartDrawer()}
       `;
 
-      bindDynamicEvents();
+      bindDynamicForms();
     }
 
     render();
