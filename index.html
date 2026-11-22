@@ -1330,7 +1330,6 @@
       };
     }
 
-    // --- 3. Sincronización con Google Sheets (prioriza la hoja al entrar desde otro celular) ---
     function mergeSheetDataIntoState(payload) {
       if (!payload || typeof payload !== 'object') return false;
       const data = payload.data && typeof payload.data === 'object' ? payload.data : payload;
@@ -1442,7 +1441,6 @@
         return false;
       }
     }
-    // ================================================================================
 
     function loadState() {
       try {
@@ -1611,13 +1609,33 @@
       window.open(url, '_blank', 'noopener,noreferrer');
     }
 
-    // --- 1. Helper para no perder el teclado al escribir ---
+    // ==================== HELPERS DE TECLADO MÓVIL (SIN RE-RENDER AL ESCRIBIR) ====================
+    function updateLiveText(elId, text) {
+      const el = document.getElementById(elId);
+      if (el) el.textContent = text;
+    }
+
+    function updateOfferDiscountPreview(priceInputId, offerInputId, badgeId) {
+      const pEl = document.getElementById(priceInputId);
+      const oEl = document.getElementById(offerInputId);
+      const bEl = document.getElementById(badgeId);
+      if (!bEl) return;
+      const p = Number(pEl ? pEl.value : 0) || 0;
+      const o = Number(oEl ? oEl.value : 0) || 0;
+      if (o > 0 && p > 0 && o < p) {
+        const pct = Math.max(1, Math.round(((p - o) / p) * 100));
+        bEl.textContent = `Descuento automático: -${pct}%`;
+      } else {
+        bEl.textContent = '';
+      }
+    }
+
     function renderAndKeepFocus(elId, startPos, endPos) {
       render();
       requestAnimationFrame(() => {
         const el = document.getElementById(elId);
         if (!el) return;
-        el.focus();
+        el.focus({ preventScroll: true });
         try {
           if (typeof startPos === 'number') {
             el.setSelectionRange(startPos, typeof endPos === 'number' ? endPos : startPos);
@@ -1626,7 +1644,7 @@
       });
     }
 
-    // --- 2. Compresión liviana para no superar el límite de 50.000 chars por celda en Sheets ---
+    // Compresión liviana para no superar el límite de 50.000 chars por celda en Sheets
     function readImageFileAsDataUrl(file, maxWidth = 500, quality = 0.65) {
       return new Promise((resolve, reject) => {
         if (!file || !file.type.startsWith('image/')) {
@@ -1856,7 +1874,6 @@
       render();
     }
 
-    // Imagen segura con respaldo automático en SVG data-uri para que nunca quede un cuadrado gris vacío
     function renderSafeImage(src, alt, className = '', fallbackDataUri = SAMPLE_FALLBACK_PHOTO) {
       const cleanSrc = (src && String(src).trim()) ? String(src).trim() : fallbackDataUri;
       const safeFb = fallbackDataUri || SAMPLE_FALLBACK_PHOTO;
@@ -1876,7 +1893,6 @@
       return `<span class="text-[#FFC107] font-bold">★</span> <span class="font-bold text-[#111111]">${val.toFixed(1)}</span>`;
     }
 
-    // Tarjeta de producto estilo Mercado Libre (2 columnas en celular, 4 en escritorio)
     function renderMLProductCard(product, opts = {}) {
       const store = getStoreById(product.tiendaId);
       const storeName = store ? store.nombre : 'Tienda local';
@@ -1887,7 +1903,6 @@
       return `
         <article class="bg-white border border-slate-200 hover:border-slate-300 rounded-2xl overflow-hidden flex flex-col justify-between shadow-2xs hover:shadow-md transition-all min-w-0">
           <div>
-            <!-- Foto cuadrada 1:1 -->
             <button
               type="button"
               onclick="openProductDetailModal('${product.id}')"
@@ -1914,7 +1929,6 @@
               </div>
             </button>
 
-            <!-- Datos del producto: nombre 16px, precio en negrita 18px -->
             <div class="p-2.5 sm:p-3.5">
               ${pricing.hasOffer ? `
                 <div class="text-xs text-[#666666] line-through leading-none mb-1">
@@ -1967,7 +1981,6 @@
             </div>
           </div>
 
-          <!-- Botones: Pedir por WhatsApp (#25D366) + Agregar -->
           <div class="px-2.5 pb-2.5 sm:px-3.5 sm:pb-3.5 pt-1 flex flex-col gap-1.5">
             <button
               type="button"
@@ -1991,7 +2004,6 @@
       `;
     }
 
-    // Tarjeta de tienda
     function renderStoreCard(store) {
       const recommended = isRecommendedStore(store);
       const isTpl = isTemplateStore(store);
@@ -2059,7 +2071,6 @@
       `;
     }
 
-    // Header fijo con 4 secciones + Buscador + Carrito + Ingresar
     function renderHeader() {
       const cartCount = db.carrito.reduce((acc, item) => acc + item.cantidad, 0);
       const navItems = [
@@ -2072,7 +2083,6 @@
       return `
         <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 w-full">
           <div class="max-w-7xl mx-auto px-3 sm:px-6 h-16 md:h-20 flex items-center justify-between gap-2 sm:gap-3">
-            <!-- Logo -->
             <button type="button" onclick="navigate('INICIO', { search: '', category: 'Todas', paraHoy: false })" class="flex items-center gap-2 text-left shrink-0 group min-w-0">
               <div class="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-[#1A2A44] text-white flex items-center justify-center font-extrabold text-sm md:text-base group-hover:bg-[#25D366] transition-colors shrink-0">
                 TA
@@ -2083,7 +2093,6 @@
               </div>
             </button>
 
-            <!-- 4 secciones principales en escritorio -->
             <nav class="hidden lg:flex items-center gap-1 shrink-0">
               ${navItems.map(item => {
                 const active = ui.route === item.id;
@@ -2095,20 +2104,19 @@
               }).join('')}
             </nav>
 
-            <!-- Buscador en cabecera -->
+            <!-- Buscador en cabecera: sin render() en oninput para no cerrar teclado -->
             <div class="hidden xl:flex flex-1 max-w-[210px] relative min-w-0">
               <input
                 type="search"
                 value="${escapeHtml(ui.searchQuery)}"
-                oninput="ui.searchQuery = this.value; if(ui.route === 'INICIO') render();"
-                onkeydown="if(event.key === 'Enter') navigate('TIENDAS', { search: this.value })"
+                oninput="ui.searchQuery = this.value;"
+                onkeydown="if(event.key === 'Enter') { event.preventDefault(); navigate('TIENDAS', { search: this.value }); }"
                 placeholder="Buscar..."
                 class="w-full h-11 pl-9 pr-3 rounded-xl bg-slate-100 border border-transparent focus:bg-white focus:border-[#1A2A44] text-sm outline-none transition-all"
               />
               <span class="absolute left-3 top-1/2 -translate-y-1/2 text-[#666666] text-xs">🔍</span>
             </div>
 
-            <!-- Ingresar + Carrito -->
             <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
               ${ui.session ? `
                 <button type="button" onclick="navigate('${ui.session.role === 'ADMIN' ? 'PANEL_ADMIN' : 'PANEL_TIENDA'}')" class="nav-item-nowrap min-h-[42px] px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-[#2E7D32] font-bold text-xs sm:text-sm flex items-center gap-1.5">
@@ -2131,7 +2139,6 @@
             </div>
           </div>
 
-          <!-- 4 secciones en móvil/tablet -->
           <div class="lg:hidden border-t border-slate-100 bg-white px-2.5 py-2 flex items-center gap-2 overflow-x-auto no-scrollbar">
             ${navItems.map(item => {
               const active = ui.route === item.id;
@@ -2146,7 +2153,6 @@
       `;
     }
 
-    // Carrito flotante visible abajo a la derecha con cantidad y subtotal rápido
     function renderFloatingCartButton() {
       const cartCount = db.carrito.reduce((acc, item) => acc + item.cantidad, 0);
       const subtotal = db.carrito.reduce((acc, item) => acc + item.precio * item.cantidad, 0);
@@ -2177,7 +2183,7 @@
       `;
     }
 
-    // 1. HOME (orden exacto A a J)
+    // 1. HOME
     function renderHome() {
       const visibleStores = getVisibleStores();
       const visibleStoreIds = new Set(visibleStores.map(s => s.id));
@@ -2215,7 +2221,6 @@
 
       return `
         <main class="flex-1 pb-24">
-          <!-- B. Título grande centrado (28px celular / 42px escritorio) + Subtítulo -->
           <section class="max-w-5xl mx-auto px-4 sm:px-6 pt-7 pb-4 text-center">
             <h1 class="font-extrabold text-[28px] md:text-[42px] leading-tight text-[#111111] tracking-tight">
               ¿Qué querés comprar hoy en Tres Arroyos?
@@ -2224,23 +2229,26 @@
               Tiendas, ofertas y envíos de tu ciudad, en un solo lugar.
             </p>
 
-            <!-- C. Buscador central con lupa + chips rápidos -->
+            <!-- Buscador central: sin render() en oninput para no perder el teclado en celular -->
             <div class="mt-6 max-w-3xl mx-auto">
               <div class="relative flex items-center">
                 <span class="absolute left-4 sm:left-5 text-xl text-[#666666] pointer-events-none">🔍</span>
                 <input
+                  id="home-main-search"
                   type="search"
                   value="${escapeHtml(ui.searchQuery)}"
-                  oninput="ui.searchQuery = this.value; render();"
+                  oninput="ui.searchQuery = this.value;"
                   onkeydown="if(event.key === 'Enter') { event.preventDefault(); navigate('TIENDAS', { search: this.value }); }"
                   placeholder="Buscá tortas, ropa, verduras, regalos..."
-                  class="w-full min-h-[56px] sm:min-h-[60px] pl-12 sm:pl-14 pr-24 rounded-2xl border-2 border-slate-200 focus:border-[#1A2A44] bg-white text-base sm:text-lg text-[#111111] outline-none transition-all"
+                  class="w-full min-h-[56px] sm:min-h-[60px] pl-12 sm:pl-14 pr-36 rounded-2xl border-2 border-slate-200 focus:border-[#1A2A44] bg-white text-base sm:text-lg text-[#111111] outline-none transition-all"
                 />
-                ${ui.searchQuery ? `
-                  <button type="button" onclick="ui.searchQuery = ''; render();" class="absolute right-3.5 px-2.5 py-1.5 rounded-lg bg-slate-100 text-xs font-bold text-[#666666] hover:text-[#111111]">
-                    Limpiar
-                  </button>
-                ` : ''}
+                <button
+                  type="button"
+                  onclick="navigate('TIENDAS', { search: document.getElementById('home-main-search').value })"
+                  class="absolute right-2.5 min-h-[42px] px-3.5 rounded-xl bg-[#1A2A44] hover:bg-[#111111] text-white text-xs sm:text-sm font-bold"
+                >
+                  Buscar
+                </button>
               </div>
 
               <div class="mt-3.5 flex items-center justify-start sm:justify-center gap-2 overflow-x-auto no-scrollbar py-1">
@@ -2260,7 +2268,6 @@
             </div>
           </section>
 
-          <!-- D. 6 categorías con foto real y nombre abajo -->
           <section class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
               ${CATEGORIES.map(cat => `
@@ -2282,7 +2289,6 @@
             </div>
           </section>
 
-          <!-- E. Toggle "Para hoy - Abierto ahora + Envíos hoy" -->
           <section class="max-w-7xl mx-auto px-4 sm:px-6 py-2">
             <div class="flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-3.5 sm:px-5">
               <div class="flex items-center gap-3 flex-wrap">
@@ -2307,7 +2313,6 @@
             </div>
           </section>
 
-          <!-- F. Bloque "OFERTAS DE HOY 🔥" -->
           <section class="max-w-7xl mx-auto px-4 sm:px-6 py-7">
             <div class="flex items-center justify-between gap-3 mb-4">
               <h2 class="font-extrabold text-xl sm:text-2xl text-[#1A2A44]">
@@ -2332,7 +2337,6 @@
             `}
           </section>
 
-          <!-- G. Bloque "TIENDAS DESTACADAS" -->
           <section class="max-w-7xl mx-auto px-4 sm:px-6 py-7">
             <div class="flex items-center justify-between gap-3 mb-4">
               <h2 class="font-extrabold text-xl sm:text-2xl text-[#1A2A44]">
@@ -2357,7 +2361,6 @@
             `}
           </section>
 
-          <!-- H. Bloque "¿Qué hay de nuevo? ✨" -->
           <section class="max-w-7xl mx-auto px-4 sm:px-6 py-7">
             <div class="flex items-center justify-between gap-3 mb-4">
               <h2 class="font-extrabold text-xl sm:text-2xl text-[#1A2A44]">
@@ -2379,7 +2382,6 @@
             `}
           </section>
 
-          <!-- I. Bloque vendedor con fondo azul oscuro #1A2A44 y texto blanco -->
           <section class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
             <div class="bg-[#1A2A44] text-white rounded-3xl p-6 sm:p-10 md:p-12 text-center shadow-lg">
               <h2 class="font-extrabold text-2xl sm:text-3xl md:text-4xl max-w-2xl mx-auto leading-tight">
@@ -2445,19 +2447,25 @@
             </p>
           </div>
 
-          <!-- Buscador arriba -->
-          <div class="relative mb-4">
-            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-[#666666]">🔍</span>
-            <input
-              type="search"
-              value="${escapeHtml(ui.searchQuery)}"
-              oninput="ui.searchQuery = this.value; render();"
-              placeholder="Buscá por tienda, rubro, barrio o producto..."
-              class="w-full min-h-[50px] pl-12 pr-4 rounded-2xl border border-slate-300 focus:border-[#1A2A44] bg-white text-sm sm:text-base outline-none"
-            />
+          <!-- Buscador arriba: sin render() en oninput para no cerrar teclado -->
+          <div class="relative mb-4 flex items-center gap-2">
+            <div class="relative flex-1">
+              <span class="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-[#666666]">🔍</span>
+              <input
+                id="stores-dir-search"
+                type="search"
+                value="${escapeHtml(ui.searchQuery)}"
+                oninput="ui.searchQuery = this.value;"
+                onkeydown="if(event.key === 'Enter') { event.preventDefault(); render(); }"
+                placeholder="Buscá por tienda, rubro, barrio o producto..."
+                class="w-full min-h-[50px] pl-12 pr-4 rounded-2xl border border-slate-300 focus:border-[#1A2A44] bg-white text-sm sm:text-base outline-none"
+              />
+            </div>
+            <button type="button" onclick="render();" class="min-h-[50px] px-5 rounded-2xl bg-[#1A2A44] hover:bg-[#111111] text-white font-bold text-sm shrink-0">
+              Filtrar
+            </button>
           </div>
 
-          <!-- Chips de rubro -->
           <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-3">
             ${catChips.map(ch => {
               const active = matchesCategoryFilter(ch, ui.selectedCategory) && (ch === 'Todas' ? ui.selectedCategory === 'Todas' : true);
@@ -2473,7 +2481,6 @@
             }).join('')}
           </div>
 
-          <!-- Filtros de barrio, orden y toggles -->
           <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-center">
             <div>
               <label class="block text-[11px] font-bold text-[#666666] mb-1">Barrio</label>
@@ -2562,7 +2569,6 @@
           </div>
 
           <div class="max-w-6xl mx-auto px-4 sm:px-6 pt-5">
-            <!-- Portada con Compartir y Favorito -->
             <div class="relative h-48 sm:h-64 md:h-72 w-full rounded-3xl overflow-hidden bg-slate-100">
               ${renderSafeImage(store.portada, store.nombre, '', makeSvgFallbackDataUri(store.nombre, '#1A2A44'))}
               <div class="absolute top-3 right-3 sm:top-4 sm:right-4 flex items-center gap-2 z-10 flex-wrap justify-end">
@@ -2585,7 +2591,6 @@
               </div>
             </div>
 
-            <!-- Cabecera del perfil -->
             <div class="bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 -mt-8 sm:-mt-10 relative z-10 shadow-2xs">
               <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div class="flex flex-col sm:flex-row sm:items-end gap-4 min-w-0">
@@ -2681,7 +2686,6 @@
               </div>
             </div>
 
-            <!-- Pestañas CATÁLOGO / RESEÑAS -->
             <div class="mt-7 flex items-center gap-3 border-b border-slate-200 pb-3.5">
               <button
                 type="button"
@@ -2701,16 +2705,24 @@
 
             ${ui.storeTab === 'CATALOGO' ? `
               <div class="mt-5">
+                <!-- Buscador interno de tienda: sin render() en oninput para no perder el teclado -->
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-                  <div class="relative flex-1">
-                    <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-[#666666]">🔍</span>
-                    <input
-                      type="search"
-                      value="${escapeHtml(ui.storeProductSearch)}"
-                      oninput="ui.storeProductSearch = this.value; render();"
-                      placeholder="Buscar en esta tienda..."
-                      class="w-full min-h-[48px] pl-10 pr-4 rounded-xl border border-slate-300 focus:border-[#1A2A44] text-sm outline-none"
-                    />
+                  <div class="relative flex-1 flex items-center gap-2">
+                    <div class="relative flex-1">
+                      <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-[#666666]">🔍</span>
+                      <input
+                        id="store-catalog-search"
+                        type="search"
+                        value="${escapeHtml(ui.storeProductSearch)}"
+                        oninput="ui.storeProductSearch = this.value;"
+                        onkeydown="if(event.key === 'Enter') { event.preventDefault(); render(); }"
+                        placeholder="Buscar en esta tienda..."
+                        class="w-full min-h-[48px] pl-10 pr-4 rounded-xl border border-slate-300 focus:border-[#1A2A44] text-sm outline-none"
+                      />
+                    </div>
+                    <button type="button" onclick="render();" class="min-h-[48px] px-4 rounded-xl bg-[#1A2A44] text-white font-bold text-xs shrink-0">
+                      Buscar
+                    </button>
                   </div>
                   <div class="flex items-center gap-2 overflow-x-auto no-scrollbar">
                     ${[
@@ -2799,7 +2811,6 @@
               </div>
             `}
 
-            <!-- Acciones rápidas al pie en escritorio -->
             <div class="hidden md:flex items-center gap-3 mt-10 pt-6 border-t border-slate-200">
               <button type="button" onclick="openWhatsAppUrl('${escapeHtml(store.whatsapp)}', \`${escapeHtml(generalWaMsg)}\`)" class="min-h-[48px] px-6 py-3 rounded-[12px] bg-[#25D366] hover:bg-[#1EB956] text-white font-extrabold text-sm flex items-center gap-2">
                 <span>💬 Hablar por WhatsApp</span>
@@ -2809,7 +2820,6 @@
               </button>
             </div>
 
-            <!-- 3 tiendas del mismo rubro -->
             ${similarStores.length > 0 ? `
               <section class="mt-10 pt-8 border-t border-slate-200">
                 <h2 class="font-extrabold text-xl sm:text-2xl text-[#1A2A44] mb-4">
@@ -2822,7 +2832,6 @@
             ` : ''}
           </div>
 
-          <!-- Barra inferior fija en celular -->
           <div class="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 px-3 py-2.5 flex items-center gap-2 shadow-lg">
             <button type="button" onclick="openWhatsAppUrl('${escapeHtml(store.whatsapp)}', \`${escapeHtml(generalWaMsg)}\`)" class="nav-item-nowrap flex-1 min-h-[48px] px-3 py-2.5 rounded-[12px] bg-[#25D366] hover:bg-[#1EB956] text-white font-bold text-xs flex items-center justify-center gap-1.5">
               <span>💬 Hablar por WhatsApp</span>
@@ -2895,7 +2904,7 @@
       `;
     }
 
-    // 5. CARRITO POR WHATSAPP (separado por tienda, sin pago online)
+    // 5. CARRITO POR WHATSAPP
     function renderCartDrawer() {
       if (!ui.cartOpen) return '';
 
@@ -3064,7 +3073,7 @@
       showToast('¡Pedido repetido en tu carrito!', 'success');
     }
 
-    // QUIERO VENDER (Registro en 3 pasos + acceso rápido a plantilla y login)
+    // QUIERO VENDER
     function renderRegisterStoreWizard() {
       const d = ui.regDraft;
       return `
@@ -3234,7 +3243,6 @@
               </form>
             ` : ''}
 
-            <!-- Acceso rápido a plantilla guía o login -->
             <div class="mt-8 pt-6 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#666666]">
               <div>¿Preferís empezar editando una tienda plantilla de guía y ponerle tu email y contraseña?</div>
               <div class="flex items-center gap-2 flex-wrap">
@@ -3264,7 +3272,7 @@
       }
     }
 
-    // PANEL DEL EMPRENDEDOR (3 pestañas: Mi Tienda, Mis Productos, Mis Pedidos)
+    // PANEL DEL EMPRENDEDOR
     function renderVendorPanel() {
       const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID) || db.tiendas[0];
       if (!store) return renderHome();
@@ -3427,9 +3435,9 @@
             <div>
               <div class="flex items-center justify-between text-xs font-bold mb-1">
                 <label for="v-store-desc" class="text-[#111111]">Descripción</label>
-                <span class="text-[#666666]">${descLen}/200</span>
+                <span id="v-store-desc-count" class="text-[#666666]">${descLen}/200</span>
               </div>
-              <textarea id="v-store-desc" rows="3" maxlength="200" oninput="this.parentElement.querySelector('span').textContent = this.value.length + '/200'" class="w-full p-3.5 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]">${escapeHtml(store.descripcion)}</textarea>
+              <textarea id="v-store-desc" rows="3" maxlength="200" oninput="updateLiveText('v-store-desc-count', this.value.length + '/200')" class="w-full p-3.5 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]">${escapeHtml(store.descripcion)}</textarea>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -3535,16 +3543,24 @@
 
       return `
         <div class="space-y-5">
+          <!-- Buscador de Mis Productos: sin render() en oninput para no perder el teclado -->
           <div class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div class="flex-1 relative">
-              <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-[#666666]">🔍</span>
-              <input
-                type="search"
-                value="${escapeHtml(ui.vendorProductSearch)}"
-                oninput="ui.vendorProductSearch = this.value; render();"
-                placeholder="Buscar mi producto..."
-                class="w-full min-h-[48px] pl-10 pr-4 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]"
-              />
+            <div class="flex-1 flex items-center gap-2">
+              <div class="relative flex-1">
+                <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-[#666666]">🔍</span>
+                <input
+                  id="vendor-prod-search-input"
+                  type="search"
+                  value="${escapeHtml(ui.vendorProductSearch)}"
+                  oninput="ui.vendorProductSearch = this.value;"
+                  onkeydown="if(event.key === 'Enter') { event.preventDefault(); render(); }"
+                  placeholder="Buscar mi producto..."
+                  class="w-full min-h-[48px] pl-10 pr-4 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]"
+                />
+              </div>
+              <button type="button" onclick="render();" class="min-h-[48px] px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-extrabold text-[#1A2A44] shrink-0">
+                Filtrar
+              </button>
             </div>
 
             <div class="flex items-center gap-3 justify-between sm:justify-end">
@@ -3612,6 +3628,7 @@
       `;
     }
 
+    // Formulario de producto: actualiza estado y vistas previas en vivo SIN llamar a render() al escribir
     function renderVendorProductForm(store, draft) {
       const photos = Array.isArray(draft.fotos) ? draft.fotos : [];
       const disc = (draft.precioOferta && draft.precio > 0 && Number(draft.precioOferta) < Number(draft.precio))
@@ -3656,11 +3673,11 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Nombre *</label>
-              <input type="text" required maxlength="50" value="${escapeHtml(draft.nombre)}" oninput="ui.productFormDraft.nombre = this.value" placeholder="Ej: Torta de chocolate" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold" />
+              <input id="prod-name-input" type="text" required maxlength="50" value="${escapeHtml(draft.nombre)}" oninput="ui.productFormDraft.nombre = this.value;" placeholder="Ej: Torta de chocolate" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold" />
             </div>
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Categoría</label>
-              <select onchange="ui.productFormDraft.categoria = this.value" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
+              <select onchange="ui.productFormDraft.categoria = this.value;" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
                 ${ALL_RUBROS.map(r => `<option value="${r}" ${draft.categoria === r ? 'selected' : ''}>${r}</option>`).join('')}
               </select>
             </div>
@@ -3669,34 +3686,64 @@
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Precio ($) *</label>
-              <input id="prod-price-input" type="number" required min="1" value="${Number(draft.precio) || 0}" oninput="ui.productFormDraft.precio = Number(this.value); renderAndKeepFocus('prod-price-input', this.selectionStart, this.selectionEnd);" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-extrabold" />
-              <span class="text-[11px] text-[#666666]">${formatARS(draft.precio)}</span>
+              <input
+                id="prod-price-input"
+                type="number"
+                required
+                min="1"
+                value="${Number(draft.precio) || 0}"
+                oninput="
+                  ui.productFormDraft.precio = Number(this.value) || 0;
+                  updateLiveText('prod-price-formatted', formatARS(ui.productFormDraft.precio));
+                  updateOfferDiscountPreview('prod-price-input', 'prod-offer-input', 'prod-offer-badge');
+                "
+                class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-extrabold"
+              />
+              <span id="prod-price-formatted" class="text-[11px] text-[#666666]">${formatARS(draft.precio)}</span>
             </div>
 
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Precio oferta (opcional)</label>
-              <input id="prod-offer-input" type="number" min="0" value="${draft.precioOferta ? Number(draft.precioOferta) : ''}" oninput="ui.productFormDraft.precioOferta = this.value ? Number(this.value) : null; renderAndKeepFocus('prod-offer-input', this.selectionStart, this.selectionEnd);" placeholder="Ej: 14500" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-extrabold" />
-              ${disc > 0 ? `<span class="text-[11px] font-extrabold text-[#E53935]">Descuento automático: -${disc}%</span>` : ''}
+              <input
+                id="prod-offer-input"
+                type="number"
+                min="0"
+                value="${draft.precioOferta ? Number(draft.precioOferta) : ''}"
+                oninput="
+                  ui.productFormDraft.precioOferta = this.value ? Number(this.value) : null;
+                  updateOfferDiscountPreview('prod-price-input', 'prod-offer-input', 'prod-offer-badge');
+                "
+                placeholder="Ej: 14500"
+                class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-extrabold"
+              />
+              <span id="prod-offer-badge" class="text-[11px] font-extrabold text-[#E53935]">${disc > 0 ? `Descuento automático: -${disc}%` : ''}</span>
             </div>
 
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Cantidad opcional</label>
-              <input type="number" min="0" value="${draft.cantidadStock !== undefined && draft.cantidadStock !== null ? Number(draft.cantidadStock) : ''}" oninput="ui.productFormDraft.cantidadStock = this.value === '' ? null : Number(this.value)" placeholder="Ej: 3" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm" />
+              <input
+                type="number"
+                min="0"
+                value="${draft.cantidadStock !== undefined && draft.cantidadStock !== null ? Number(draft.cantidadStock) : ''}"
+                oninput="ui.productFormDraft.cantidadStock = this.value === '' ? null : Number(this.value);"
+                placeholder="Ej: 3"
+                class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm"
+              />
             </div>
           </div>
 
           <div>
             <label class="block text-xs font-bold text-[#111111] mb-1">Descripción</label>
-            <textarea rows="2" maxlength="200" oninput="ui.productFormDraft.descripcion = this.value" class="w-full p-3 rounded-xl border border-slate-300 bg-white text-sm">${escapeHtml(draft.descripcion || '')}</textarea>
+            <textarea rows="2" maxlength="200" oninput="ui.productFormDraft.descripcion = this.value;" class="w-full p-3 rounded-xl border border-slate-300 bg-white text-sm">${escapeHtml(draft.descripcion || '')}</textarea>
           </div>
 
           <div class="flex items-center gap-4 flex-wrap">
             <label class="flex items-center gap-2 text-xs font-extrabold text-[#111111] cursor-pointer">
-              <input type="checkbox" ${draft.stockDisponible ? 'checked' : ''} onchange="ui.productFormDraft.stockDisponible = this.checked" class="w-4 h-4" />
+              <input type="checkbox" ${draft.stockDisponible ? 'checked' : ''} onchange="ui.productFormDraft.stockDisponible = this.checked;" class="w-4 h-4" />
               <span>Disponible</span>
             </label>
             <label class="flex items-center gap-2 text-xs font-extrabold text-[#7C4DFF] cursor-pointer">
-              <input type="checkbox" ${draft.esNuevo ? 'checked' : ''} onchange="ui.productFormDraft.esNuevo = this.checked" class="w-4 h-4" />
+              <input type="checkbox" ${draft.esNuevo ? 'checked' : ''} onchange="ui.productFormDraft.esNuevo = this.checked;" class="w-4 h-4" />
               <span>Etiqueta NUEVO</span>
             </label>
           </div>
@@ -3803,7 +3850,7 @@
       `;
     }
 
-    // PANEL ADMIN (3 pestañas: Tiendas, Ofertas, Estadísticas)
+    // PANEL ADMIN
     function renderAdminPanel() {
       return `
         <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-7 pb-24">
@@ -3851,14 +3898,21 @@
 
       return `
         <div class="space-y-4">
+          <!-- Buscador Admin: sin render() en oninput para no perder el teclado -->
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <input
-              type="search"
-              value="${escapeHtml(ui.adminSearch)}"
-              oninput="ui.adminSearch = this.value; render();"
-              placeholder="Buscar tienda..."
-              class="flex-1 min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm outline-none"
-            />
+            <div class="flex-1 flex items-center gap-2">
+              <input
+                type="search"
+                value="${escapeHtml(ui.adminSearch)}"
+                oninput="ui.adminSearch = this.value;"
+                onkeydown="if(event.key === 'Enter') { event.preventDefault(); render(); }"
+                placeholder="Buscar tienda..."
+                class="flex-1 min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm outline-none"
+              />
+              <button type="button" onclick="render();" class="min-h-[48px] px-4 rounded-xl bg-[#1A2A44] text-white text-xs font-bold shrink-0">
+                Buscar
+              </button>
+            </div>
             <button type="button" onclick="window.__adminDeleteSampleStores()" class="nav-item-nowrap min-h-[48px] px-4 py-2 rounded-xl bg-red-50 border border-red-200 text-[#E53935] text-xs font-extrabold">
               Borrar tiendas de ejemplo
             </button>
@@ -4033,7 +4087,6 @@
       `;
     }
 
-    // J. Footer
     function renderFooter() {
       return `
         <footer class="bg-slate-50 border-t border-slate-200 mt-auto">
@@ -4047,82 +4100,99 @@
               <div class="flex flex-wrap items-center gap-4 text-sm font-bold text-[#111111]">
                 <button type="button" onclick="navigate('INICIO')" class="hover:text-[#1A2A44]">Inicio</button>
                 <button type="button" onclick="navigate('TIENDAS')" class="hover:text-[#1A2A44]">Tiendas</button>
-                <button type="button" onclick="navigate('OFERTAS')" class="hover:text-[#1A2A44]">Ofertas</button>
-                <button type="button" onclick="navigate('QUIERO_VENDER')" class="hover:text-[#1A2A44]">Quiero Vender</button>
-                <button type="button" onclick="openWhatsAppUrl('${SUPPORT_WHATSAPP}', 'Hola, necesito ayuda con Mercado Tres Arroyos.')" class="text-[#2E7D32] hover:underline">WhatsApp de soporte</button>
-                <button type="button" onclick="showToast('Instagram: @mercadotresarroyos', 'info')" class="hover:text-[#1A2A44]">Instagram</button>
+                <button type="button" onclick="navigate('OFERTAS')" class="hover:text-[#1A2A44]">Ofertas del día</button>
+                <button type="button" onclick="navigate('QUIERO_VENDER')" class="hover:text-[#1A2A44]">Quiero vender</button>
+                <button type="button" onclick="openTermsModal()" class="hover:text-[#1A2A44]">Términos y condiciones</button>
+                <button type="button" onclick="openContactModal()" class="hover:text-[#1A2A44]">Contacto</button>
+                <button type="button" onclick="openLoginModal()" class="px-3.5 py-2 rounded-xl bg-white border border-slate-300 hover:border-[#1A2A44] text-xs font-extrabold text-[#1A2A44]">
+                  Ingresar
+                </button>
               </div>
-            </div>
-
-            <div class="mt-6 pt-6 border-t border-slate-200 text-xs text-[#666666] text-center sm:text-left">
-              © 2026 Mercado Tres Arroyos - Comprá local.
             </div>
           </div>
         </footer>
       `;
     }
 
-    // Modales
+    // MODALES
     function openModal(htmlContent) {
-      const modal = document.getElementById('modal-container');
-      if (!modal) return;
-      modal.innerHTML = `<div class="bg-white rounded-3xl max-w-xl w-full p-5 sm:p-7 shadow-2xl relative my-auto" onclick="event.stopPropagation()">${htmlContent}</div>`;
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
-      modal.onclick = () => closeModal();
+      const mc = document.getElementById('modal-container');
+      if (!mc) return;
+      mc.innerHTML = `<div class="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto">${htmlContent}</div>`;
+      mc.classList.remove('hidden');
+      mc.classList.add('flex');
     }
 
     function closeModal() {
-      const modal = document.getElementById('modal-container');
-      if (!modal) return;
-      modal.classList.add('hidden');
-      modal.classList.remove('flex');
-      modal.innerHTML = '';
+      const mc = document.getElementById('modal-container');
+      if (!mc) return;
+      mc.innerHTML = '';
+      mc.classList.add('hidden');
+      mc.classList.remove('flex');
     }
 
     function openProductDetailModal(productId) {
       const prod = db.productos.find(p => p.id === productId);
       if (!prod) return;
-      const store = getStoreById(prod.tiendaId) || { nombre: 'Tienda local', slug: 'tortas-de-maru', barrio: 'Centro', haceEnvios: true, precioEnvio: 1500 };
+      const store = getStoreById(prod.tiendaId) || db.tiendas[0];
       const pricing = getEffectivePrice(prod);
-      const photos = (Array.isArray(prod.fotos) && prod.fotos.length > 0) ? prod.fotos : [SAMPLE_FALLBACK_PHOTO];
+      const photos = (prod.fotos && prod.fotos.length > 0) ? prod.fotos : [SAMPLE_FALLBACK_PHOTO];
 
       openModal(`
-        <div>
-          <div class="flex items-start justify-between gap-3 mb-4">
+        <div class="p-5 sm:p-6">
+          <div class="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
             <div>
-              <span class="text-xs font-extrabold uppercase tracking-wider text-[#1A2A44]">${escapeHtml(store.nombre)} · 📍 ${escapeHtml(store.barrio)}</span>
-              <h2 class="font-extrabold text-xl sm:text-2xl text-[#111111] mt-0.5">${escapeHtml(prod.nombre)}</h2>
+              <span class="text-xs font-bold text-[#1A2A44]">${escapeHtml(store ? store.nombre : 'Tienda local')}</span>
+              <h2 class="font-extrabold text-xl sm:text-2xl text-[#111111]">${escapeHtml(prod.nombre)}</h2>
             </div>
-            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
+            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold text-base">✕</button>
           </div>
 
-          <div class="grid grid-cols-3 gap-2.5 mb-4">
-            ${photos.slice(0, 3).map((ph, idx) => `
-              <div class="aspect-square rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
-                ${renderSafeImage(ph, `${prod.nombre} foto ${idx + 1}`)}
+          <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <div class="aspect-square rounded-2xl overflow-hidden bg-slate-50 border border-slate-200">
+                ${renderSafeImage(photos[0], prod.nombre, '', '', 'modal-main-prod-img')}
               </div>
-            `).join('')}
-          </div>
+              <div class="mt-2.5 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                ${photos.map((ph, idx) => `
+                  <button type="button" onclick="document.querySelector('#modal-container img').src = this.dataset.src" data-src="${escapeHtml(ph)}" class="w-16 h-16 rounded-xl overflow-hidden border border-slate-200 shrink-0">
+                    ${renderSafeImage(ph, `${prod.nombre} ${idx + 1}`)}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
 
-          <div class="flex items-baseline gap-2.5 flex-wrap mb-3">
-            <span class="text-2xl font-extrabold ${pricing.hasOffer ? 'text-[#E53935]' : 'text-[#111111]'}">${formatARS(pricing.finalPrice)}</span>
-            ${pricing.hasOffer ? `
-              <span class="text-sm text-[#666666] line-through">${formatARS(pricing.originalPrice)}</span>
-              <span class="px-2 py-0.5 rounded-md bg-[#E53935] text-white text-xs font-extrabold">-${pricing.discountPct}%</span>
-            ` : ''}
-            ${store.haceEnvios ? `<span class="text-xs font-bold text-[#2E7D32]">· Envío ${formatARS(store.precioEnvio)}</span>` : ''}
-          </div>
+            <div class="flex flex-col justify-between">
+              <div>
+                <div class="flex items-center gap-2 flex-wrap mb-2">
+                  ${!prod.stockDisponible ? `<span class="px-2.5 py-0.5 rounded-md bg-[#9E9E9E] text-white text-xs font-extrabold">AGOTADO</span>` : ''}
+                  ${pricing.hasOffer ? `<span class="px-2.5 py-0.5 rounded-md bg-[#E53935] text-white text-xs font-extrabold">-${pricing.discountPct}%</span>` : ''}
+                  ${prod.esNuevo ? `<span class="px-2.5 py-0.5 rounded-md bg-[#7C4DFF] text-white text-xs font-extrabold">NUEVO</span>` : ''}
+                </div>
 
-          <p class="text-sm text-[#111111] leading-relaxed mb-5">${escapeHtml(prod.descripcion || '')}</p>
+                ${pricing.hasOffer ? `<div class="text-sm text-[#666666] line-through">${formatARS(pricing.originalPrice)}</div>` : ''}
+                <div class="text-3xl font-extrabold ${pricing.hasOffer ? 'text-[#E53935]' : 'text-[#111111]'}">${formatARS(pricing.finalPrice)}</div>
 
-          <div class="flex flex-col sm:flex-row gap-2.5">
-            <button type="button" onclick="closeModal(); quickBuyWhatsApp('${prod.id}');" class="flex-1 min-h-[50px] px-4 py-3 rounded-[12px] bg-[#25D366] hover:bg-[#1EB956] text-white font-extrabold text-sm flex items-center justify-center gap-2">
-              <span>💬 Pedir por WhatsApp</span>
-            </button>
-            <button type="button" onclick="addToCart('${prod.id}', 1); closeModal();" class="flex-1 min-h-[50px] px-4 py-3 rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm">
-              + Agregar al carrito
-            </button>
+                <p class="mt-3 text-sm text-[#111111] leading-relaxed">${escapeHtml(prod.descripcion || '')}</p>
+
+                ${store ? `
+                  <div class="mt-4 p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+                    <div class="font-extrabold text-[#1A2A44]">🏪 ${escapeHtml(store.nombre)} · 📍 ${escapeHtml(store.barrio)}</div>
+                    <div class="text-[#666666]">🚚 ${store.haceEnvios ? `Envío ${formatARS(store.precioEnvio)}` : 'Retiro en local'}</div>
+                  </div>
+                ` : ''}
+              </div>
+
+              <div class="mt-5 space-y-2">
+                <button type="button" ${!prod.stockDisponible ? 'disabled' : ''} onclick="closeModal(); quickBuyWhatsApp('${prod.id}');" class="min-h-[50px] w-full px-4 py-3 rounded-[12px] font-extrabold text-sm flex items-center justify-center gap-2 ${prod.stockDisponible ? 'bg-[#25D366] hover:bg-[#1EB956] text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}">
+                  <span>💬</span>
+                  <span>Pedir por WhatsApp</span>
+                </button>
+                <button type="button" ${!prod.stockDisponible ? 'disabled' : ''} onclick="closeModal(); addToCart('${prod.id}', 1);" class="min-h-[48px] w-full px-4 py-3 rounded-[12px] font-extrabold text-sm border ${prod.stockDisponible ? 'border-[#1A2A44] text-[#1A2A44] hover:bg-[#1A2A44] hover:text-white' : 'border-slate-200 text-slate-400 cursor-not-allowed'}">
+                  + Agregar al carrito
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       `);
@@ -4130,102 +4200,70 @@
 
     function openLoginModal() {
       openModal(`
-        <div>
-          <div class="flex items-center justify-between gap-2 mb-4">
-            <h2 class="font-extrabold text-xl text-[#1A2A44]">Ingresar a tu cuenta</h2>
+        <div class="p-6 sm:p-7">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">Ingresar</h2>
             <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
           </div>
 
-          <form id="login-form" class="space-y-4">
+          <form id="login-form" class="mt-5 space-y-4">
             <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Email o usuario</label>
-              <input id="login-email" type="text" required placeholder="tu-email@ejemplo.com" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]" />
+              <label class="block text-xs font-bold text-[#111111] mb-1">Email</label>
+              <input id="login-email" type="email" required placeholder="tu@correo.com" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]" />
             </div>
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Contraseña</label>
-              <input id="login-password" type="password" required placeholder="Tu contraseña" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]" />
+              <input id="login-password" type="password" required placeholder="••••••••" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]" />
             </div>
             <button type="submit" class="w-full min-h-[50px] rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm">
-              Ingresar
+              Entrar
             </button>
           </form>
 
           <div class="mt-5 pt-4 border-t border-slate-200 space-y-2.5 text-xs">
-            <div class="text-[#666666] font-semibold">Acceso rápido para probar o arrancar desde una plantilla guía:</div>
+            <div class="font-bold text-[#666666]">Accesos rápidos:</div>
             <div class="flex flex-wrap gap-2">
-              <button type="button" onclick="window.__quickLoginVendor('${DEMO_TEMPLATE_EMAIL}', '${DEMO_TEMPLATE_PASS}')" class="min-h-[40px] px-3 py-1.5 rounded-xl bg-emerald-50 text-[#2E7D32] font-extrabold">
-                Plantilla Guía (${DEMO_TEMPLATE_EMAIL} / ${DEMO_TEMPLATE_PASS})
+              <button type="button" onclick="window.__quickVendorLogin('${DEMO_TEMPLATE_EMAIL}', '${DEMO_TEMPLATE_PASS}')" class="px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-[#2E7D32] font-extrabold">
+                Usar plantilla guía
               </button>
-              <button type="button" onclick="window.__quickLoginVendor('maru@tresarroyos.com', '123456')" class="min-h-[40px] px-3 py-1.5 rounded-xl bg-slate-100 text-[#111111] font-bold">
-                Tienda ejemplo: Maru
+              <button type="button" onclick="window.__quickVendorLogin('maru@tresarroyos.com', '123456')" class="px-3 py-2 rounded-xl bg-slate-100 font-bold text-[#111111]">
+                Demo Emprendedor (Maru)
               </button>
-              <button type="button" onclick="window.__quickLoginAdmin()" class="min-h-[40px] px-3 py-1.5 rounded-xl bg-slate-100 text-[#1A2A44] font-bold">
-                Admin
+              <button type="button" onclick="window.__quickAdminLogin()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold text-[#1A2A44]">
+                Demo Admin
               </button>
             </div>
           </div>
         </div>
       `);
-
-      const form = document.getElementById('login-form');
-      if (form) {
-        form.onsubmit = (e) => {
-          e.preventDefault();
-          const emailVal = String(document.getElementById('login-email').value || '').trim().toLowerCase();
-          const passVal = String(document.getElementById('login-password').value || '').trim();
-
-          if (emailVal === 'admin@tresarroyos.com' || emailVal === 'admin') {
-            ui.session = { role: 'ADMIN' };
-            closeModal();
-            showToast('Sesión de administrador iniciada.', 'success');
-            navigate('PANEL_ADMIN');
-            return;
-          }
-
-          const matchedStore = db.tiendas.find(t =>
-            String(t.email || '').trim().toLowerCase() === emailVal &&
-            String(t.password || '').trim() === passVal
-          );
-
-          if (matchedStore) {
-            ui.session = { role: 'VENDOR', storeId: matchedStore.id };
-            closeModal();
-            showToast(`¡Hola ${matchedStore.nombre}!`, 'success');
-            navigate('PANEL_TIENDA');
-            return;
-          }
-
-          showToast('Email o contraseña incorrectos.', 'error');
-        };
-      }
     }
 
     function openReviewModal(storeId) {
       const store = getStoreById(storeId);
-      if (!store) return;
-
       openModal(`
-        <div>
-          <div class="flex items-center justify-between gap-2 mb-4">
-            <h2 class="font-extrabold text-xl text-[#1A2A44]">Dejar reseña · ${escapeHtml(store.nombre)}</h2>
+        <div class="p-6">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">Dejar reseña · ${escapeHtml(store ? store.nombre : '')}</h2>
             <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
           </div>
-          <form id="review-form" class="space-y-4">
+          <form id="review-form" data-store-id="${storeId}" class="mt-4 space-y-4">
             <div>
-              <label class="block text-xs font-bold mb-1">Tu nombre</label>
+              <label class="block text-xs font-bold mb-1">Tu nombre *</label>
               <input id="rev-name" type="text" required placeholder="Ej: Mariana Gómez" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm" />
             </div>
             <div>
               <label class="block text-xs font-bold mb-1">Calificación</label>
               <select id="rev-stars" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-bold">
-                <option value="5">5 estrellas ★★★★★</option>
-                <option value="4">4 estrellas ★★★★</option>
-                <option value="3">3 estrellas ★★★</option>
+                <option value="5">5 ★ Excelente</option>
+                <option value="4">4 ★ Muy bueno</option>
+                <option value="3">3 ★ Bueno</option>
+                <option value="2">2 ★ Regular</option>
+                <option value="1">1 ★ Malo</option>
               </select>
             </div>
             <div>
-              <label class="block text-xs font-bold mb-1">Comentario</label>
-              <textarea id="rev-comment" rows="3" required placeholder="Contá cómo fue tu experiencia..." class="w-full p-3.5 rounded-xl border border-slate-300 text-sm"></textarea>
+              <label class="block text-xs font-bold mb-1">Comentario *</label>
+              <textarea id="rev-comment" rows="3" required placeholder="Contá tu experiencia comprando en esta tienda..." class="w-full p-3.5 rounded-xl border border-slate-300 text-sm"></textarea>
             </div>
             <button type="submit" class="w-full min-h-[48px] rounded-[12px] bg-[#1A2A44] text-white font-extrabold text-sm">
               Publicar reseña
@@ -4233,403 +4271,126 @@
           </form>
         </div>
       `);
-
-      document.getElementById('review-form').onsubmit = (e) => {
-        e.preventDefault();
-        const cliente = document.getElementById('rev-name').value.trim();
-        const estrellas = Number(document.getElementById('rev-stars').value) || 5;
-        const comentario = document.getElementById('rev-comment').value.trim();
-        if (!cliente || !comentario) return;
-
-        db.resenas.unshift({
-          id: 'rev-' + Date.now(),
-          tiendaId: store.id,
-          cliente,
-          avatar: makeSvgFallbackDataUri(cliente.slice(0, 2) || 'TA', '#1A2A44'),
-          fecha: 'Hoy',
-          estrellas,
-          comentario,
-          fotoProducto: ''
-        });
-        store.reviewCount = (store.reviewCount || 0) + 1;
-        if (estrellas === 5) store.fiveStarCount = (store.fiveStarCount || 0) + 1;
-        saveState(db);
-        closeModal();
-        showToast('¡Gracias por dejar tu reseña!', 'success');
-        render();
-      };
     }
 
     function openReportStoreModal(storeId) {
       const store = getStoreById(storeId);
-      if (!store) return;
       openModal(`
-        <div>
-          <div class="flex items-center justify-between gap-2 mb-3">
-            <h2 class="font-extrabold text-lg text-[#1A2A44]">Reportar tienda · ${escapeHtml(store.nombre)}</h2>
+        <div class="p-6">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">Reportar tienda · ${escapeHtml(store ? store.nombre : '')}</h2>
             <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
           </div>
-          <p class="text-xs text-[#666666] mb-4">Indicá el motivo para revisar la publicación.</p>
-          <form id="report-form" class="space-y-3">
-            <select id="rep-reason" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
-              <option value="Datos desactualizados">Horarios o precios desactualizados</option>
-              <option value="No responde">No responde por WhatsApp</option>
-              <option value="Otro">Otro motivo</option>
-            </select>
-            <button type="submit" class="w-full min-h-[48px] rounded-[12px] bg-[#1A2A44] text-white font-extrabold text-sm">
+          <form id="report-form" class="mt-4 space-y-4">
+            <div>
+              <label class="block text-xs font-bold mb-1">Motivo</label>
+              <select id="rep-reason" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
+                <option value="Datos desactualizados">Datos desactualizados</option>
+                <option value="No responden">No responden</option>
+                <option value="Precios o stock incorrectos">Precios o stock incorrectos</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold mb-1">Detalle</label>
+              <textarea id="rep-detail" rows="3" class="w-full p-3.5 rounded-xl border border-slate-300 text-sm"></textarea>
+            </div>
+            <button type="submit" class="w-full min-h-[48px] rounded-[12px] bg-[#E53935] text-white font-extrabold text-sm">
               Enviar reporte
             </button>
           </form>
         </div>
       `);
-      document.getElementById('report-form').onsubmit = (e) => {
-        e.preventDefault();
-        closeModal();
-        showToast('Reporte enviado. Gracias por ayudar a cuidar la comunidad.', 'success');
-      };
     }
 
-    // Acciones globales vinculadas a botones y formularios
-    window.__openDemoTemplateAsVendor = function () {
-      ensureDemoTemplateExists();
-      ui.session = { role: 'VENDOR', storeId: DEMO_TEMPLATE_ID };
-      ui.vendorTab = 'MI_TIENDA';
-      navigate('PANEL_TIENDA');
-    };
-
-    window.__quickLoginVendor = function (email, pass) {
-      const st = db.tiendas.find(t => t.email === email && t.password === pass);
-      if (st) {
-        ui.session = { role: 'VENDOR', storeId: st.id };
-        closeModal();
-        showToast(`Ingresaste como ${st.nombre}`, 'success');
-        navigate('PANEL_TIENDA');
-      }
-    };
-
-    window.__quickLoginAdmin = function () {
-      ui.session = { role: 'ADMIN' };
-      closeModal();
-      showToast('Ingresaste como Administrador', 'success');
-      navigate('PANEL_ADMIN');
-    };
-
-    window.__vendorToggleOpen = function (storeId) {
-      const st = getStoreById(storeId);
-      if (!st) return;
-      st.abiertoAhora = !st.abiertoAhora;
-      saveState(db);
-      pushToSheet('updateStore', { tienda: st });
-      showToast(st.abiertoAhora ? 'Tu tienda ahora figura ABIERTA.' : 'Tu tienda ahora figura CERRADA.', 'success');
-      render();
-    };
-
-    window.__vendorUploadStoreMedia = async function (event, field) {
-      const file = event.target.files && event.target.files[0];
-      if (!file) return;
-      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
-      if (!store) return;
-      try {
-        const dataUrl = await readImageFileAsDataUrl(file);
-        store[field] = dataUrl;
-        saveState(db);
-        showToast(`${field === 'logo' ? 'Logo' : 'Portada'} actualizado.`, 'success');
-        render();
-      } catch (err) {
-        showToast(err.message || 'No se pudo cargar la imagen.', 'error');
-      }
-    };
-
-    window.__vendorClearStoreMedia = function (field) {
-      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
-      if (!store) return;
-      store[field] = '';
-      saveState(db);
-      render();
-    };
-
-    window.__vendorCopyFirstDayHours = function () {
-      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
-      if (!store) return;
-      const firstOpen = document.querySelector('[data-day-open="Lunes"]')?.checked ?? true;
-      const firstStart = document.querySelector('[data-day-start="Lunes"]')?.value || '09:00';
-      const firstEnd = document.querySelector('[data-day-end="Lunes"]')?.value || '20:00';
-      const daysList = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-      store.horariosSemana = store.horariosSemana || {};
-      daysList.forEach(d => {
-        store.horariosSemana[d] = { abierto: firstOpen, apertura: firstStart, cierre: firstEnd };
-      });
-      saveState(db);
-      showToast('Horario copiado a todos los días.', 'success');
-      render();
-    };
-
-    window.__vendorOpenNewProductForm = function (storeId) {
-      const st = getStoreById(storeId);
-      ui.productFormDraft = {
-        id: null,
-        tiendaId: storeId,
-        nombre: '',
-        precio: 10000,
-        precioOferta: null,
-        esNuevo: false,
-        stockDisponible: true,
-        cantidadStock: null,
-        categoria: st ? st.rubro : 'Dulces',
-        descripcion: '',
-        fotos: [SAMPLE_FALLBACK_PHOTO]
-      };
-      ui.showProductForm = true;
-      render();
-    };
-
-    window.__vendorEditProduct = function (productId) {
-      const p = db.productos.find(x => x.id === productId);
-      if (!p) return;
-      ui.productFormDraft = {
-        ...p,
-        fotos: Array.isArray(p.fotos) && p.fotos.length > 0 ? [...p.fotos] : [SAMPLE_FALLBACK_PHOTO]
-      };
-      ui.showProductForm = true;
-      render();
-    };
-
-    window.__vendorUploadProductPhotos = async function (event) {
-      const files = Array.from(event.target.files || []);
-      if (!files.length || !ui.productFormDraft) return;
-      const current = Array.isArray(ui.productFormDraft.fotos) ? [...ui.productFormDraft.fotos] : [];
-      for (const f of files) {
-        if (current.length >= 3) break;
-        try {
-          const dataUrl = await readImageFileAsDataUrl(f);
-          current.push(dataUrl);
-        } catch (_) {}
-      }
-      ui.productFormDraft.fotos = current.slice(0, 3);
-      showToast('Fotos cargadas desde galería.', 'success');
-      render();
-    };
-
-    window.__vendorMoveProductPhoto = function (idx, delta) {
-      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
-      const arr = ui.productFormDraft.fotos;
-      const target = idx + delta;
-      if (target < 0 || target >= arr.length) return;
-      [arr[idx], arr[target]] = [arr[target], arr[idx]];
-      render();
-    };
-
-    window.__vendorRemoveProductPhoto = function (idx) {
-      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
-      ui.productFormDraft.fotos.splice(idx, 1);
-      if (ui.productFormDraft.fotos.length === 0) {
-        ui.productFormDraft.fotos.push(SAMPLE_FALLBACK_PHOTO);
-      }
-      render();
-    };
-
-    window.__vendorToggleProductOffer = function (productId) {
-      const p = db.productos.find(x => x.id === productId);
-      if (!p) return;
-      const existingIdx = db.ofertas.findIndex(o => o.productoId === productId);
-      if (existingIdx !== -1 || (p.precioOferta && p.precioOferta < p.precio)) {
-        db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
-        p.precioOferta = null;
-        saveState(db);
-        showToast('Oferta quitada.', 'info');
-        render();
-      } else {
-        const suggested = Math.max(100, Math.round((p.precio * 0.8) / 100) * 100);
-        p.precioOferta = suggested;
-        db.ofertas.unshift({
-          id: 'of-' + Date.now(),
-          productoId: p.id,
-          precioOferta: suggested,
-          hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
-          destacada: false
-        });
-        saveState(db);
-        pushToSheet('upsertOffer', { productoId: p.id, precioOferta: suggested });
-        showToast(`Oferta activada a ${formatARS(suggested)}.`, 'success');
-        render();
-      }
-    };
-
-    window.__vendorDuplicateProduct = function (productId) {
-      const p = db.productos.find(x => x.id === productId);
-      if (!p) return;
-      const copy = {
-        ...p,
-        id: 'prod-' + Date.now(),
-        nombre: p.nombre + ' (Copia)',
-        fotos: Array.isArray(p.fotos) ? [...p.fotos] : [SAMPLE_FALLBACK_PHOTO]
-      };
-      db.productos.unshift(copy);
-      saveState(db);
-      pushToSheet('upsertProduct', copy);
-      showToast('Producto duplicado.', 'success');
-      render();
-    };
-
-    window.__vendorMoveProduct = function (productId, delta) {
-      const idx = db.productos.findIndex(p => p.id === productId);
-      if (idx === -1) return;
-      const target = idx + delta;
-      if (target < 0 || target >= db.productos.length) return;
-      [db.productos[idx], db.productos[target]] = [db.productos[target], db.productos[idx]];
-      saveState(db);
-      render();
-    };
-
-    window.__vendorAskDeleteProduct = function (productId) {
-      const p = db.productos.find(x => x.id === productId);
-      if (!p) return;
+    function openTermsModal() {
       openModal(`
-        <div>
-          <h3 class="font-extrabold text-lg text-[#111111]">¿Borrar "${escapeHtml(p.nombre)}"?</h3>
-          <p class="text-sm text-[#666666] mt-1">Esta acción eliminará el producto de tu catálogo.</p>
-          <div class="mt-5 flex items-center justify-end gap-2.5">
-            <button type="button" onclick="closeModal()" class="min-h-[44px] px-4 py-2 rounded-xl bg-slate-100 font-bold text-sm">Cancelar</button>
-            <button type="button" onclick="window.__vendorConfirmDeleteProduct('${productId}')" class="min-h-[44px] px-5 py-2 rounded-xl bg-[#E53935] text-white font-extrabold text-sm">Borrar</button>
+        <div class="p-6 space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">Términos y condiciones</h2>
+            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
           </div>
+          <p class="text-sm text-[#111111] leading-relaxed">
+            Mercado Tres Arroyos conecta a vecinos y emprendedores de Tres Arroyos. Los pedidos, precios, stock, horarios y envíos son coordinados directamente entre el comprador y cada tienda a través de WhatsApp.
+          </p>
+          <button type="button" onclick="closeModal()" class="min-h-[44px] px-5 py-2 rounded-xl bg-[#1A2A44] text-white text-xs font-bold">Entendido</button>
         </div>
       `);
-    };
+    }
 
-    window.__vendorConfirmDeleteProduct = function (productId) {
-      db.productos = db.productos.filter(p => p.id !== productId);
-      db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
-      saveState(db);
-      closeModal();
-      showToast('Producto eliminado.', 'info');
-      render();
-    };
+    function openContactModal() {
+      openModal(`
+        <div class="p-6 space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">Contacto · Mercado Tres Arroyos</h2>
+            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
+          </div>
+          <p class="text-sm text-[#666666]">¿Tenés dudas sobre tu tienda o querés sumar tu emprendimiento en Tres Arroyos?</p>
+          <button type="button" onclick="openWhatsAppUrl('${SUPPORT_WHATSAPP}', 'Hola Mercado Tres Arroyos, quería hacer una consulta.')" class="min-h-[48px] w-full px-5 py-3 rounded-[12px] bg-[#25D366] text-white font-extrabold text-sm">
+            💬 Escribir por WhatsApp
+          </button>
+        </div>
+      `);
+    }
 
-    window.__vendorMarkAllOrdersSeen = function (storeId) {
-      db.pedidos.forEach(o => {
-        if (o.tiendaId === storeId) o.esNuevoNoVisto = false;
-      });
-      saveState(db);
-      render();
-    };
+    // Eventos globales y handlers de formularios
+    function attachGlobalEventListeners() {
+      document.addEventListener('submit', (e) => {
+        const form = e.target;
+        if (!(form instanceof HTMLFormElement)) return;
 
-    window.__vendorSetOrderStatus = function (orderId, newStatus) {
-      const ord = db.pedidos.find(o => o.id === orderId);
-      if (!ord) return;
-      ord.estado = newStatus;
-      ord.esNuevoNoVisto = false;
-      saveState(db);
-      showToast(`Pedido marcado como ${newStatus}.`, 'success');
-      render();
-    };
-
-    window.__adminSetStoreStatus = function (storeId, status) {
-      const st = getStoreById(storeId);
-      if (!st) return;
-      st.estadoSuscripcion = status;
-      saveState(db);
-      pushToSheet('updateStore', { tienda: st });
-      showToast(`Estado de ${st.nombre}: ${status}`, 'success');
-      render();
-    };
-
-    window.__adminToggleVerified = function (storeId) {
-      const st = getStoreById(storeId);
-      if (!st) return;
-      st.verificado = !st.verificado;
-      saveState(db);
-      pushToSheet('updateStore', { tienda: st });
-      showToast(`${st.nombre}: ${st.verificado ? 'Verificado activado' : 'Verificado quitado'}`, 'success');
-      render();
-    };
-
-    window.__adminDeleteSampleStores = function () {
-      const sampleIds = ['tienda-maru', 'tienda-don-juan', 'tienda-luna', 'tienda-huellas', 'tienda-deco-hogar'];
-      db.tiendas = db.tiendas.filter(t => !sampleIds.includes(t.id));
-      db.productos = db.productos.filter(p => !sampleIds.includes(p.tiendaId));
-      ensureDemoTemplateExists();
-      saveState(db);
-      showToast('Tiendas de ejemplo eliminadas. Plantilla guía preservada.', 'info');
-      render();
-    };
-
-    window.__adminFeatureOffer = function (offerId) {
-      const off = db.ofertas.find(o => o.id === offerId);
-      if (!off) return;
-      off.destacada = !off.destacada;
-      saveState(db);
-      showToast(off.destacada ? 'Oferta destacada.' : 'Oferta normal.', 'success');
-      render();
-    };
-
-    window.__adminEndOffer = function (offerId) {
-      const off = db.ofertas.find(o => o.id === offerId);
-      if (off) {
-        const prod = db.productos.find(p => p.id === off.productoId);
-        if (prod) prod.precioOferta = null;
-      }
-      db.ofertas = db.ofertas.filter(o => o.id !== offerId);
-      saveState(db);
-      showToast('Oferta finalizada.', 'info');
-      render();
-    };
-
-    function bindDynamicForms() {
-      const reg1 = document.getElementById('reg-step-1-form');
-      if (reg1) {
-        reg1.onsubmit = (e) => {
+        if (form.id === 'reg-step-1-form') {
           e.preventDefault();
-          if (!ui.regDraft.nombre.trim() || !ui.regDraft.whatsapp.trim()) {
-            showToast('Completá nombre y WhatsApp.', 'error');
+          if (!ui.regDraft.nombre.trim() || !ui.regDraft.whatsapp.trim() || !ui.regDraft.email.trim() || !ui.regDraft.password.trim()) {
+            showToast('Completá los campos obligatorios del paso 1.', 'error');
             return;
           }
           ui.regStep = 2;
           render();
-        };
-      }
+          return;
+        }
 
-      const reg2 = document.getElementById('reg-step-2-form');
-      if (reg2) {
-        reg2.onsubmit = (e) => {
+        if (form.id === 'reg-step-2-form') {
           e.preventDefault();
           ui.regStep = 3;
           render();
-        };
-      }
+          return;
+        }
 
-      const reg3 = document.getElementById('reg-step-3-form');
-      if (reg3) {
-        reg3.onsubmit = (e) => {
+        if (form.id === 'reg-step-3-form') {
           e.preventDefault();
           const d = ui.regDraft;
           if (!d.prodNombre.trim() || !(Number(d.prodPrecio) > 0)) {
-            showToast('Completá nombre y precio del primer producto.', 'error');
+            showToast('Ingresá nombre y precio del primer producto.', 'error');
             return;
           }
 
           const storeId = 'tienda-' + Date.now();
-          const storeSlug = slugify(d.nombre);
+          const baseSlug = slugify(d.nombre);
+          const uniqueSlug = db.tiendas.some(t => t.slug === baseSlug) ? `${baseSlug}-${Math.floor(10 + Math.random() * 89)}` : baseSlug;
+          const cleanName = d.nombre.trim().toUpperCase();
+
           const newStore = {
             id: storeId,
-            slug: db.tiendas.some(t => t.slug === storeSlug) ? `${storeSlug}-${Math.floor(10 + Math.random() * 89)}` : storeSlug,
-            nombre: d.nombre.trim().toUpperCase(),
+            slug: uniqueSlug,
+            nombre: cleanName,
             dueno: d.nombre.trim(),
-            email: (d.email || '').trim().toLowerCase(),
-            password: (d.password || '123456').trim(),
+            email: d.email.trim().toLowerCase(),
+            password: d.password,
             esPlantillaDemo: false,
             rubro: d.rubro || 'Otros',
             barrio: d.barrio || 'Centro',
-            direccion: d.barrio || 'Centro',
+            direccion: d.barrio || 'Tres Arroyos',
             whatsapp: normalizeWhatsAppPhone(d.whatsapp),
             instagram: '',
-            logo: d.logo || makeSvgFallbackDataUri(d.nombre, '#1A2A44'),
-            portada: d.portada || makeSvgFallbackDataUri(d.nombre, '#2E7D32'),
-            descripcion: (d.descripcion || 'Emprendimiento local en Tres Arroyos.').trim(),
+            logo: d.logo || makeSvgFallbackDataUri(cleanName, '#1A2A44'),
+            portada: d.portada || makeSvgFallbackDataUri(cleanName, '#2E7D32'),
+            descripcion: d.descripcion.trim() || `Tienda de ${cleanName} en Tres Arroyos.`,
             antiguedadTexto: 'Nueva tienda en Tres Arroyos',
             rating: 5.0,
             reviewCount: 0,
             fiveStarCount: 0,
-            salesCount: 0,
+            salesCount: 1,
             verificado: false,
             abiertoAhora: true,
             horarioTexto: d.horarioTexto || 'Lun a Sáb 9 a 20',
@@ -4652,15 +4413,20 @@
             precioOferta: null,
             esNuevo: true,
             stockDisponible: true,
-            cantidadStock: null,
-            categoria: newStore.rubro,
-            descripcion: 'Producto publicado en Mercado Tres Arroyos.',
-            fotos: [d.prodFoto || makeSvgFallbackDataUri(d.prodNombre, '#1A2A44')]
+            cantidadStock: 10,
+            categoria: d.rubro || 'Otros',
+            descripcion: '',
+            fotos: [d.prodFoto || makeSvgFallbackDataUri(d.prodNombre.trim(), '#1A2A44')]
           };
 
           db.tiendas.unshift(newStore);
           db.productos.unshift(firstProd);
-          ui.session = { role: 'VENDOR', storeId: newStore.id };
+          saveState(db);
+
+          pushToSheet('registerStore', { tienda: newStore, productoInicial: firstProd });
+
+          ui.session = { role: 'VENDOR', storeId };
+          ui.vendorTab = 'MI_TIENDA';
           ui.regStep = 1;
           ui.regDraft = {
             nombre: '',
@@ -4680,185 +4446,20 @@
             prodFoto: ''
           };
 
-          saveState(db);
-          pushToSheet('registerStore', { tienda: newStore, productoInicial: firstProd });
-          showToast('¡Tu tienda ya está publicada!', 'success');
-          navigate('TIENDA_PERFIL', { storeSlug: newStore.slug });
-        };
-      }
+          showToast('¡Tu tienda ya está publicada en Mercado Tres Arroyos!', 'success');
+          navigate('PANEL_TIENDA');
+          return;
+        }
 
-      const vendorStoreForm = document.getElementById('vendor-store-form');
-      if (vendorStoreForm) {
-        vendorStoreForm.onsubmit = (e) => {
+        if (form.id === 'cart-checkout-form') {
           e.preventDefault();
-          const currentStore = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
-          if (!currentStore) return;
+          const customerName = (document.getElementById('cart-customer-name')?.value || '').trim();
+          const customerBarrio = document.getElementById('cart-customer-barrio')?.value || 'Centro';
+          const customerAddress = (document.getElementById('cart-customer-address')?.value || '').trim();
+          const customerNote = (document.getElementById('cart-customer-note')?.value || '').trim();
 
-          const newName = document.getElementById('v-store-name').value.trim().toUpperCase();
-          const newRubro = document.getElementById('v-store-rubro').value;
-          const newEmail = document.getElementById('v-store-email').value.trim().toLowerCase();
-          const newPass = document.getElementById('v-store-password').value.trim();
-          const newDesc = document.getElementById('v-store-desc').value.trim();
-          const newBarrio = document.getElementById('v-store-barrio').value;
-          const newDir = document.getElementById('v-store-dir').value.trim();
-          const newWa = document.getElementById('v-store-wa').value.trim();
-          const newIg = document.getElementById('v-store-ig').value.trim();
-          const newHoursText = document.getElementById('v-store-hours-text').value.trim();
-          const newShipping = document.getElementById('v-store-shipping').checked;
-          const newShipPrice = Number(document.getElementById('v-store-ship-price').value) || 0;
-          const newShipFree = Number(document.getElementById('v-store-ship-free').value) || 0;
-          const newEncargo = document.getElementById('v-store-encargo').checked;
-
-          const payMethods = [];
-          document.querySelectorAll('[data-pay-method]').forEach(cb => {
-            if (cb.checked) payMethods.push(cb.getAttribute('data-pay-method'));
-          });
-
-          const daysList = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-          const updatedHours = {};
-          daysList.forEach(d => {
-            updatedHours[d] = {
-              abierto: document.querySelector(`[data-day-open="${d}"]`)?.checked ?? true,
-              apertura: document.querySelector(`[data-day-start="${d}"]`)?.value || '09:00',
-              cierre: document.querySelector(`[data-day-end="${d}"]`)?.value || '20:00'
-            };
-          });
-
-          const patch = {
-            nombre: newName || currentStore.nombre,
-            rubro: newRubro,
-            email: newEmail || currentStore.email,
-            password: newPass || currentStore.password,
-            descripcion: newDesc,
-            barrio: newBarrio,
-            direccion: newDir,
-            whatsapp: normalizeWhatsAppPhone(newWa || currentStore.whatsapp),
-            instagram: newIg,
-            horarioTexto: newHoursText,
-            haceEnvios: newShipping,
-            envioHoy: newShipping,
-            precioEnvio: newShipPrice,
-            envioGratisDesde: newShipFree,
-            aceptaEncargo: newEncargo,
-            metodosPago: payMethods.length > 0 ? payMethods : ['Efectivo'],
-            horariosSemana: updatedHours
-          };
-
-          if (isTemplateStore(currentStore)) {
-            const matResult = materializeOwnStoreFromTemplate(currentStore, patch);
-            if (matResult.cloned) {
-              showToast(`¡Listo! Se creó tu tienda "${matResult.store.nombre}" con tus datos y la plantilla guía quedó intacta.`, 'success');
-              render();
-              return;
-            }
-          }
-
-          Object.assign(currentStore, patch);
-          saveState(db);
-          pushToSheet('updateStore', { tienda: currentStore });
-          showToast('Cambios guardados en tu tienda.', 'success');
-          render();
-        };
-      }
-
-      const prodForm = document.getElementById('vendor-product-form');
-      if (prodForm && ui.productFormDraft) {
-        prodForm.onsubmit = (e) => {
-          e.preventDefault();
-          const d = ui.productFormDraft;
-          if (!d.nombre.trim() || !(Number(d.precio) > 0)) {
-            showToast('Completá nombre y precio.', 'error');
-            return;
-          }
-
-          const cleanOffer = (d.precioOferta && Number(d.precioOferta) > 0 && Number(d.precioOferta) < Number(d.precio))
-            ? Number(d.precioOferta)
-            : null;
-
-          const photos = (Array.isArray(d.fotos) && d.fotos.length > 0) ? d.fotos.slice(0, 3) : [SAMPLE_FALLBACK_PHOTO];
-
-          if (d.id) {
-            const idx = db.productos.findIndex(p => p.id === d.id);
-            if (idx !== -1) {
-              db.productos[idx] = {
-                ...db.productos[idx],
-                nombre: d.nombre.trim(),
-                precio: Number(d.precio),
-                precioOferta: cleanOffer,
-                esNuevo: Boolean(d.esNuevo),
-                stockDisponible: Boolean(d.stockDisponible),
-                cantidadStock: d.cantidadStock === '' || d.cantidadStock === null ? null : Number(d.cantidadStock),
-                categoria: d.categoria || 'Otros',
-                descripcion: (d.descripcion || '').trim(),
-                fotos: photos
-              };
-              if (cleanOffer) {
-                const existingOffer = db.ofertas.find(o => o.productoId === d.id);
-                if (existingOffer) {
-                  existingOffer.precioOferta = cleanOffer;
-                } else {
-                  db.ofertas.unshift({
-                    id: 'of-' + Date.now(),
-                    productoId: d.id,
-                    precioOferta: cleanOffer,
-                    hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
-                    destacada: false
-                  });
-                }
-              } else {
-                db.ofertas = db.ofertas.filter(o => o.productoId !== d.id);
-              }
-              pushToSheet('upsertProduct', db.productos[idx]);
-              showToast('Producto actualizado.', 'success');
-            }
-          } else {
-            const newProd = {
-              id: 'prod-' + Date.now(),
-              tiendaId: d.tiendaId,
-              nombre: d.nombre.trim(),
-              precio: Number(d.precio),
-              precioOferta: cleanOffer,
-              esNuevo: Boolean(d.esNuevo),
-              stockDisponible: Boolean(d.stockDisponible),
-              cantidadStock: d.cantidadStock === '' || d.cantidadStock === null ? null : Number(d.cantidadStock),
-              categoria: d.categoria || 'Otros',
-              descripcion: (d.descripcion || '').trim(),
-              fotos: photos
-            };
-            db.productos.unshift(newProd);
-            if (cleanOffer) {
-              db.ofertas.unshift({
-                id: 'of-' + Date.now(),
-                productoId: newProd.id,
-                precioOferta: cleanOffer,
-                hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
-                destacada: false
-              });
-            }
-            pushToSheet('upsertProduct', newProd);
-            showToast('Producto agregado al catálogo.', 'success');
-          }
-
-          ui.showProductForm = false;
-          ui.productFormDraft = null;
-          saveState(db);
-          render();
-        };
-      }
-
-      const cartForm = document.getElementById('cart-checkout-form');
-      if (cartForm) {
-        cartForm.onsubmit = (e) => {
-          e.preventDefault();
-          if (db.carrito.length === 0) return;
-
-          const cliente = document.getElementById('cart-customer-name').value.trim();
-          const barrio = document.getElementById('cart-customer-barrio').value;
-          const direccion = document.getElementById('cart-customer-address').value.trim();
-          const nota = document.getElementById('cart-customer-note').value.trim();
-
-          if (!cliente || !direccion) {
-            showToast('Completá tu nombre y dirección.', 'error');
+          if (!customerName || !customerAddress) {
+            showToast('Completá tu nombre y dirección para enviar el pedido.', 'error');
             return;
           }
 
@@ -4868,123 +4469,580 @@
             byStore.get(item.tiendaId).push(item);
           });
 
-          const timeLabel = 'Hoy ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-          let firstWaUrl = '';
+          const entries = Array.from(byStore.entries());
+          const firstEntry = entries[0];
+          if (!firstEntry) return;
 
-          byStore.forEach((items, storeId) => {
-            const st = getStoreById(storeId) || { id: storeId, nombre: 'Tienda', whatsapp: SUPPORT_WHATSAPP, haceEnvios: true, precioEnvio: 1500 };
-            const sub = items.reduce((s, i) => s + i.precio * i.cantidad, 0);
-            const ship = st.haceEnvios ? ((st.envioGratisDesde && sub >= st.envioGratisDesde) ? 0 : (Number(st.precioEnvio) || 0)) : 0;
-            const totalTienda = sub + ship;
-            const orderId = 'PED-' + Math.floor(1000 + Math.random() * 9000);
+          const [targetStoreId, storeItems] = firstEntry;
+          const targetStore = getStoreById(targetStoreId) || { nombre: 'Tienda', whatsapp: SUPPORT_WHATSAPP, haceEnvios: true, precioEnvio: 1500 };
 
-            const newOrder = {
-              id: orderId,
-              tiendaId: st.id,
-              tiendaNombre: st.nombre,
-              cliente,
-              barrio,
-              direccion,
-              nota,
-              fecha: timeLabel,
-              estado: 'Nuevo',
-              esNuevoNoVisto: true,
-              total: totalTienda,
-              items: items.map(i => ({
-                productoId: i.productoId,
-                nombre: i.nombre,
-                cantidad: i.cantidad,
-                precioUnitario: i.precio,
-                foto: i.foto
-              }))
-            };
+          const sub = storeItems.reduce((s, i) => s + i.precio * i.cantidad, 0);
+          const ship = targetStore.haceEnvios
+            ? ((targetStore.envioGratisDesde && sub >= targetStore.envioGratisDesde) ? 0 : (Number(targetStore.precioEnvio) || 0))
+            : 0;
+          const total = sub + ship;
 
-            db.pedidos.unshift(newOrder);
-            db.misPedidosCliente.unshift({
-              id: orderId,
-              tiendaId: st.id,
-              tiendaNombre: st.nombre,
-              total: totalTienda,
-              resumenItems: items.map(i => `${i.cantidad}x ${i.nombre}`).join(', '),
-              items: newOrder.items
-            });
-            pushToSheet('createOrder', newOrder);
+          const lines = storeItems.map(i => `• ${i.cantidad}x ${i.nombre} (${formatARS(i.precio * i.cantidad)})`).join('\n');
+          const waText = `Hola ${targetStore.nombre}, quiero hacer este pedido desde Mercado Tres Arroyos:\n\n${lines}\n\nSubtotal: ${formatARS(sub)}\nEnvío: ${formatARS(ship)}\nTotal: ${formatARS(total)}\n\nCliente: ${customerName}\nBarrio: ${customerBarrio}\nDirección: ${customerAddress}${customerNote ? `\nNota: ${customerNote}` : ''}`;
 
-            const lines = [
-              `Hola ${st.nombre}, quiero hacer el siguiente pedido desde Mercado Tres Arroyos:`,
-              '',
-              ...items.map(i => `• ${i.cantidad}x ${i.nombre} — ${formatARS(i.precio * i.cantidad)}`),
-              '',
-              `Subtotal: ${formatARS(sub)}`,
-              `Envío: ${formatARS(ship)}`,
-              `Total: ${formatARS(totalTienda)}`,
-              '',
-              `Nombre: ${cliente}`,
-              `Barrio: ${barrio}`,
-              `Dirección: ${direccion}`
-            ];
-            if (nota) lines.push(`Nota: ${nota}`);
+          const orderRecord = {
+            id: 'PED-' + Math.floor(1000 + Math.random() * 9000),
+            tiendaId: targetStore.id,
+            tiendaNombre: targetStore.nombre,
+            cliente: customerName,
+            barrio: customerBarrio,
+            direccion: customerAddress,
+            nota: customerNote,
+            fecha: 'Hoy ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+            estado: 'Nuevo',
+            esNuevoNoVisto: true,
+            total,
+            resumenItems: storeItems.map(i => `${i.cantidad}x ${i.nombre}`).join(', '),
+            items: storeItems.map(i => ({ ...i, precioUnitario: i.precio }))
+          };
 
-            const waUrl = buildWhatsAppLink(st.whatsapp, lines.join('\n'));
-            if (!firstWaUrl) firstWaUrl = waUrl;
-          });
-
+          db.pedidos.unshift(orderRecord);
+          db.misPedidosCliente.unshift(orderRecord);
           db.carrito = [];
           ui.cartOpen = false;
           saveState(db);
-          showToast('¡Pedido registrado! Abriendo WhatsApp...', 'success');
-          render();
 
-          if (firstWaUrl) {
-            window.open(firstWaUrl, '_blank', 'noopener,noreferrer');
+          pushToSheet('createOrder', orderRecord);
+          openWhatsAppUrl(targetStore.whatsapp, waText);
+          render();
+          return;
+        }
+
+        if (form.id === 'login-form') {
+          e.preventDefault();
+          const email = (document.getElementById('login-email')?.value || '').trim().toLowerCase();
+          const pass = (document.getElementById('login-password')?.value || '').trim();
+
+          if (email === 'admin@tresarroyos.com' && pass === 'admin123') {
+            ui.session = { role: 'ADMIN' };
+            closeModal();
+            showToast('Bienvenido al Panel Admin.', 'success');
+            navigate('PANEL_ADMIN');
+            return;
           }
-        };
-      }
+
+          const foundStore = db.tiendas.find(t => (t.email || '').toLowerCase() === email && t.password === pass);
+          if (foundStore) {
+            ui.session = { role: 'VENDOR', storeId: foundStore.id };
+            ui.vendorTab = 'MI_TIENDA';
+            closeModal();
+            showToast(`Bienvenido a ${foundStore.nombre}.`, 'success');
+            navigate('PANEL_TIENDA');
+            return;
+          }
+
+          showToast('Email o contraseña incorrectos.', 'error');
+          return;
+        }
+
+        if (form.id === 'vendor-store-form') {
+          e.preventDefault();
+          const storeId = ui.session && ui.session.storeId ? ui.session.storeId : DEMO_TEMPLATE_ID;
+          const idx = db.tiendas.findIndex(t => t.id === storeId);
+          if (idx === -1) return;
+
+          const currentStore = db.tiendas[idx];
+          const daysList = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+          const horariosSemana = {};
+          daysList.forEach(day => {
+            const openEl = form.querySelector(`[data-day-open="${day}"]`);
+            const startEl = form.querySelector(`[data-day-start="${day}"]`);
+            const endEl = form.querySelector(`[data-day-end="${day}"]`);
+            horariosSemana[day] = {
+              abierto: openEl ? openEl.checked : true,
+              apertura: startEl ? startEl.value : '09:00',
+              cierre: endEl ? endEl.value : '20:00'
+            };
+          });
+
+          const metodosPago = [];
+          form.querySelectorAll('[data-pay-method]').forEach(cb => {
+            if (cb.checked) metodosPago.push(cb.getAttribute('data-pay-method'));
+          });
+
+          const updatedFields = {
+            nombre: (document.getElementById('v-store-name')?.value || currentStore.nombre).trim().toUpperCase(),
+            rubro: document.getElementById('v-store-rubro')?.value || currentStore.rubro,
+            email: (document.getElementById('v-store-email')?.value || currentStore.email || '').trim().toLowerCase(),
+            password: (document.getElementById('v-store-password')?.value || currentStore.password || '').trim(),
+            descripcion: (document.getElementById('v-store-desc')?.value || '').trim().slice(0, 200),
+            barrio: document.getElementById('v-store-barrio')?.value || currentStore.barrio,
+            direccion: (document.getElementById('v-store-dir')?.value || '').trim(),
+            whatsapp: (document.getElementById('v-store-wa')?.value || '').trim(),
+            instagram: (document.getElementById('v-store-ig')?.value || '').trim(),
+            horarioTexto: (document.getElementById('v-store-hours-text')?.value || '').trim(),
+            haceEnvios: Boolean(document.getElementById('v-store-shipping')?.checked),
+            envioHoy: Boolean(document.getElementById('v-store-shipping')?.checked),
+            precioEnvio: Number(document.getElementById('v-store-ship-price')?.value) || 0,
+            envioGratisDesde: Number(document.getElementById('v-store-ship-free')?.value) || 0,
+            aceptaEncargo: Boolean(document.getElementById('v-store-encargo')?.checked),
+            metodosPago,
+            horariosSemana
+          };
+
+          if (isTemplateStore(currentStore)) {
+            const materialized = materializeOwnStoreFromTemplate(currentStore, updatedFields);
+            if (materialized.cloned) {
+              showToast(`¡Listo! Se creó tu tienda propia "${materialized.store.nombre}". La plantilla guía quedó intacta.`, 'success');
+              render();
+              return;
+            }
+          }
+
+          db.tiendas[idx] = {
+            ...currentStore,
+            ...updatedFields
+          };
+
+          saveState(db);
+          pushToSheet('updateStore', db.tiendas[idx]);
+          showToast('Cambios guardados.', 'success');
+          render();
+          return;
+        }
+
+        if (form.id === 'vendor-product-form') {
+          e.preventDefault();
+          const draft = ui.productFormDraft;
+          const storeId = ui.session && ui.session.storeId ? ui.session.storeId : DEMO_TEMPLATE_ID;
+          if (!draft || !draft.nombre.trim() || !(Number(draft.precio) > 0)) {
+            showToast('Completá nombre y precio del producto.', 'error');
+            return;
+          }
+
+          const cleanPhotos = (Array.isArray(draft.fotos) && draft.fotos.length > 0)
+            ? draft.fotos.slice(0, 3)
+            : [makeSvgFallbackDataUri(draft.nombre.trim(), '#1A2A44')];
+
+          const offerPrice = (draft.precioOferta && Number(draft.precioOferta) > 0 && Number(draft.precioOferta) < Number(draft.precio))
+            ? Number(draft.precioOferta)
+            : null;
+
+          const prodObj = {
+            id: draft.id || ('prod-' + Date.now()),
+            tiendaId: storeId,
+            nombre: draft.nombre.trim(),
+            precio: Number(draft.precio),
+            precioOferta: offerPrice,
+            esNuevo: Boolean(draft.esNuevo),
+            stockDisponible: Boolean(draft.stockDisponible),
+            cantidadStock: (draft.cantidadStock === '' || draft.cantidadStock === null || draft.cantidadStock === undefined) ? null : Number(draft.cantidadStock),
+            categoria: draft.categoria || 'Otros',
+            descripcion: (draft.descripcion || '').trim(),
+            fotos: cleanPhotos
+          };
+
+          const existingIdx = db.productos.findIndex(p => p.id === prodObj.id);
+          if (existingIdx >= 0) {
+            db.productos[existingIdx] = prodObj;
+          } else {
+            db.productos.unshift(prodObj);
+          }
+
+          db.ofertas = db.ofertas.filter(o => o.productoId !== prodObj.id);
+          if (offerPrice) {
+            db.ofertas.unshift({
+              id: 'of-' + Date.now(),
+              productoId: prodObj.id,
+              precioOferta: offerPrice,
+              hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+              destacada: false
+            });
+          }
+
+          saveState(db);
+          pushToSheet('saveProduct', prodObj);
+          ui.showProductForm = false;
+          ui.productFormDraft = null;
+          showToast('Producto guardado.', 'success');
+          render();
+          return;
+        }
+
+        if (form.id === 'review-form') {
+          e.preventDefault();
+          const storeId = form.getAttribute('data-store-id');
+          const name = (document.getElementById('rev-name')?.value || '').trim();
+          const stars = Number(document.getElementById('rev-stars')?.value) || 5;
+          const comment = (document.getElementById('rev-comment')?.value || '').trim();
+          if (!name || !comment) return;
+
+          const newRev = {
+            id: 'rev-' + Date.now(),
+            tiendaId: storeId,
+            cliente: name,
+            avatar: makeSvgFallbackDataUri(name, '#1A2A44'),
+            fecha: 'Hoy',
+            estrellas: stars,
+            comentario: comment,
+            fotoProducto: ''
+          };
+
+          db.resenas.unshift(newRev);
+          const stIdx = db.tiendas.findIndex(t => t.id === storeId);
+          if (stIdx >= 0) {
+            const st = db.tiendas[stIdx];
+            const prevCount = st.reviewCount || 0;
+            const nextCount = prevCount + 1;
+            const avg = (((st.rating || 4.8) * prevCount) + stars) / nextCount;
+            st.reviewCount = nextCount;
+            st.rating = Math.round(avg * 10) / 10;
+            if (stars === 5) st.fiveStarCount = (st.fiveStarCount || 0) + 1;
+          }
+
+          saveState(db);
+          pushToSheet('createReview', newRev);
+          closeModal();
+          showToast('¡Gracias por tu reseña!', 'success');
+          render();
+          return;
+        }
+
+        if (form.id === 'report-form') {
+          e.preventDefault();
+          closeModal();
+          showToast('Reporte enviado. Gracias por ayudar a cuidar la comunidad.', 'info');
+        }
+      });
+
+      document.getElementById('modal-container')?.addEventListener('click', (e) => {
+        if (e.target.id === 'modal-container') closeModal();
+      });
     }
 
+    // Acciones del vendedor y administrador
+    window.__quickVendorLogin = (email, pass) => {
+      const found = db.tiendas.find(t => (t.email || '').toLowerCase() === String(email).toLowerCase() && t.password === pass);
+      if (found) {
+        ui.session = { role: 'VENDOR', storeId: found.id };
+        ui.vendorTab = 'MI_TIENDA';
+        closeModal();
+        showToast(isTemplateStore(found) ? 'Entraste a la plantilla guía. Cambiá email y clave al guardar.' : `Ingresaste como ${found.nombre}.`, 'success');
+        navigate('PANEL_TIENDA');
+      }
+    };
+
+    window.__openDemoTemplateAsVendor = () => {
+      ensureDemoTemplateExists();
+      ui.session = { role: 'VENDOR', storeId: DEMO_TEMPLATE_ID };
+      ui.vendorTab = 'MI_TIENDA';
+      showToast('Plantilla guía abierta. Editá tus datos y cambiá email y contraseña al guardar.', 'success');
+      navigate('PANEL_TIENDA');
+    };
+
+    window.__quickAdminLogin = () => {
+      ui.session = { role: 'ADMIN' };
+      ui.adminTab = 'TIENDAS';
+      closeModal();
+      showToast('Ingresaste como Administrador.', 'success');
+      navigate('PANEL_ADMIN');
+    };
+
+    window.__vendorToggleOpen = (storeId) => {
+      const idx = db.tiendas.findIndex(t => t.id === storeId);
+      if (idx === -1) return;
+      db.tiendas[idx].abiertoAhora = !db.tiendas[idx].abiertoAhora;
+      saveState(db);
+      pushToSheet('updateStore', db.tiendas[idx]);
+      showToast(db.tiendas[idx].abiertoAhora ? 'Tu tienda ahora figura ABIERTA.' : 'Tu tienda ahora figura CERRADA.', 'info');
+      render();
+    };
+
+    window.__vendorUploadStoreMedia = async (event, field) => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const storeId = ui.session && ui.session.storeId ? ui.session.storeId : DEMO_TEMPLATE_ID;
+      const idx = db.tiendas.findIndex(t => t.id === storeId);
+      if (idx === -1) return;
+      try {
+        const dataUrl = await readImageFileAsDataUrl(file);
+        db.tiendas[idx][field] = dataUrl;
+        saveState(db);
+        pushToSheet('updateStore', db.tiendas[idx]);
+        showToast(`${field === 'logo' ? 'Logo' : 'Portada'} actualizada desde galería.`, 'success');
+        render();
+      } catch (err) {
+        showToast(err.message || 'No se pudo subir la imagen.', 'error');
+      }
+    };
+
+    window.__vendorClearStoreMedia = (field) => {
+      const storeId = ui.session && ui.session.storeId ? ui.session.storeId : DEMO_TEMPLATE_ID;
+      const idx = db.tiendas.findIndex(t => t.id === storeId);
+      if (idx === -1) return;
+      db.tiendas[idx][field] = '';
+      saveState(db);
+      pushToSheet('updateStore', db.tiendas[idx]);
+      render();
+    };
+
+    window.__vendorCopyFirstDayHours = () => {
+      const storeId = ui.session && ui.session.storeId ? ui.session.storeId : DEMO_TEMPLATE_ID;
+      const idx = db.tiendas.findIndex(t => t.id === storeId);
+      if (idx === -1) return;
+      const daysList = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+      const firstOpen = document.querySelector('[data-day-open="Lunes"]')?.checked ?? true;
+      const firstStart = document.querySelector('[data-day-start="Lunes"]')?.value || '09:00';
+      const firstEnd = document.querySelector('[data-day-end="Lunes"]')?.value || '20:00';
+      const map = {};
+      daysList.forEach(d => {
+        map[d] = { abierto: firstOpen, apertura: firstStart, cierre: firstEnd };
+      });
+      db.tiendas[idx].horariosSemana = map;
+      saveState(db);
+      showToast('Horario copiado a todos los días.', 'success');
+      render();
+    };
+
+    window.__vendorOpenNewProductForm = (storeId) => {
+      const st = getStoreById(storeId);
+      ui.showProductForm = true;
+      ui.productFormDraft = {
+        id: null,
+        tiendaId: storeId,
+        nombre: '',
+        precio: 10000,
+        precioOferta: null,
+        esNuevo: true,
+        stockDisponible: true,
+        cantidadStock: null,
+        categoria: (st && st.rubro) || 'Otros',
+        descripcion: '',
+        fotos: []
+      };
+      render();
+    };
+
+    window.__vendorEditProduct = (productId) => {
+      const prod = db.productos.find(p => p.id === productId);
+      if (!prod) return;
+      ui.showProductForm = true;
+      ui.productFormDraft = { ...prod, fotos: Array.isArray(prod.fotos) ? [...prod.fotos] : [] };
+      render();
+    };
+
+    window.__vendorUploadProductPhotos = async (event) => {
+      const files = Array.from(event.target.files || []);
+      if (files.length === 0 || !ui.productFormDraft) return;
+      const current = Array.isArray(ui.productFormDraft.fotos) ? [...ui.productFormDraft.fotos] : [];
+      for (const file of files) {
+        if (current.length >= 3) break;
+        try {
+          const dataUrl = await readImageFileAsDataUrl(file);
+          current.push(dataUrl);
+        } catch (_) {}
+      }
+      ui.productFormDraft.fotos = current.slice(0, 3);
+      showToast('Foto(s) agregada(s) desde tu galería.', 'success');
+      render();
+    };
+
+    window.__vendorMoveProductPhoto = (index, delta) => {
+      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
+      const arr = [...ui.productFormDraft.fotos];
+      const target = index + delta;
+      if (target < 0 || target >= arr.length) return;
+      [arr[index], arr[target]] = [arr[target], arr[index]];
+      ui.productFormDraft.fotos = arr;
+      render();
+    };
+
+    window.__vendorRemoveProductPhoto = (index) => {
+      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
+      ui.productFormDraft.fotos.splice(index, 1);
+      render();
+    };
+
+    window.__vendorToggleProductOffer = (productId) => {
+      const idx = db.productos.findIndex(p => p.id === productId);
+      if (idx === -1) return;
+      const prod = db.productos[idx];
+      const pricing = getEffectivePrice(prod);
+
+      if (pricing.hasOffer) {
+        prod.precioOferta = null;
+        db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
+        saveState(db);
+        pushToSheet('saveProduct', prod);
+        showToast('Oferta quitada.', 'info');
+      } else {
+        const suggested = Math.max(100, Math.round((prod.precio * 0.8) / 100) * 100);
+        prod.precioOferta = suggested;
+        db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
+        db.ofertas.unshift({
+          id: 'of-' + Date.now(),
+          productoId: prod.id,
+          precioOferta: suggested,
+          hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+          destacada: false
+        });
+        saveState(db);
+        pushToSheet('saveProduct', prod);
+        showToast(`Oferta activada a ${formatARS(suggested)}.`, 'success');
+      }
+      render();
+    };
+
+    window.__vendorDuplicateProduct = (productId) => {
+      const prod = db.productos.find(p => p.id === productId);
+      if (!prod) return;
+      const copy = {
+        ...prod,
+        id: 'prod-' + Date.now(),
+        nombre: `${prod.nombre} (copia)`,
+        fotos: Array.isArray(prod.fotos) ? [...prod.fotos] : []
+      };
+      db.productos.unshift(copy);
+      saveState(db);
+      pushToSheet('saveProduct', copy);
+      showToast('Producto duplicado.', 'success');
+      render();
+    };
+
+    window.__vendorMoveProduct = (productId, delta) => {
+      const idx = db.productos.findIndex(p => p.id === productId);
+      if (idx === -1) return;
+      const target = idx + delta;
+      if (target < 0 || target >= db.productos.length) return;
+      if (db.productos[target].tiendaId !== db.productos[idx].tiendaId) return;
+      [db.productos[idx], db.productos[target]] = [db.productos[target], db.productos[idx]];
+      saveState(db);
+      render();
+    };
+
+    window.__vendorAskDeleteProduct = (productId) => {
+      const prod = db.productos.find(p => p.id === productId);
+      if (!prod) return;
+      openModal(`
+        <div class="p-6 space-y-4">
+          <h3 class="font-extrabold text-lg text-[#111111]">¿Borrar "${escapeHtml(prod.nombre)}"?</h3>
+          <p class="text-sm text-[#666666]">Esta acción eliminará el producto del catálogo de tu tienda.</p>
+          <div class="flex items-center justify-end gap-2.5 pt-2">
+            <button type="button" onclick="closeModal()" class="min-h-[44px] px-4 py-2 rounded-xl bg-slate-100 font-bold text-xs">Cancelar</button>
+            <button type="button" onclick="window.__vendorConfirmDeleteProduct('${productId}')" class="min-h-[44px] px-4 py-2 rounded-xl bg-[#E53935] text-white font-extrabold text-xs">Borrar</button>
+          </div>
+        </div>
+      `);
+    };
+
+    window.__vendorConfirmDeleteProduct = (productId) => {
+      db.productos = db.productos.filter(p => p.id !== productId);
+      db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
+      saveState(db);
+      pushToSheet('deleteProduct', { id: productId });
+      closeModal();
+      showToast('Producto borrado.', 'info');
+      render();
+    };
+
+    window.__vendorSetOrderStatus = (orderId, status) => {
+      const idx = db.pedidos.findIndex(o => o.id === orderId);
+      if (idx === -1) return;
+      db.pedidos[idx].estado = status;
+      db.pedidos[idx].esNuevoNoVisto = false;
+      saveState(db);
+      pushToSheet('updateOrderStatus', { id: orderId, estado: status });
+      showToast(`Pedido marcado como "${status}".`, 'success');
+      render();
+    };
+
+    window.__vendorMarkAllOrdersSeen = (storeId) => {
+      db.pedidos.forEach(o => {
+        if (o.tiendaId === storeId) o.esNuevoNoVisto = false;
+      });
+      saveState(db);
+      render();
+    };
+
+    window.__adminSetStoreStatus = (storeId, status) => {
+      const idx = db.tiendas.findIndex(t => t.id === storeId);
+      if (idx === -1) return;
+      db.tiendas[idx].estadoSuscripcion = status;
+      saveState(db);
+      pushToSheet('updateStoreStatus', { id: storeId, estadoSuscripcion: status });
+      showToast(`Estado actualizado a ${status}.`, 'success');
+      render();
+    };
+
+    window.__adminToggleVerified = (storeId) => {
+      const idx = db.tiendas.findIndex(t => t.id === storeId);
+      if (idx === -1) return;
+      db.tiendas[idx].verificado = !db.tiendas[idx].verificado;
+      saveState(db);
+      pushToSheet('updateStore', db.tiendas[idx]);
+      showToast('Sello Verificado actualizado.', 'success');
+      render();
+    };
+
+    window.__adminDeleteSampleStores = () => {
+      const sampleIds = ['tienda-maru', 'tienda-don-juan', 'tienda-luna', 'tienda-huellas', 'tienda-deco-hogar'];
+      db.tiendas = db.tiendas.filter(t => !sampleIds.includes(t.id));
+      db.productos = db.productos.filter(p => !sampleIds.includes(p.tiendaId));
+      saveState(db);
+      showToast('Tiendas de ejemplo eliminadas.', 'info');
+      render();
+    };
+
+    window.__adminFeatureOffer = (offerId) => {
+      db.ofertas.forEach(o => {
+        o.destacada = (o.id === offerId);
+      });
+      saveState(db);
+      showToast('Oferta destacada.', 'success');
+      render();
+    };
+
+    window.__adminEndOffer = (offerId) => {
+      const offer = db.ofertas.find(o => o.id === offerId);
+      if (offer) {
+        const pIdx = db.productos.findIndex(p => p.id === offer.productoId);
+        if (pIdx >= 0) db.productos[pIdx].precioOferta = null;
+      }
+      db.ofertas = db.ofertas.filter(o => o.id !== offerId);
+      saveState(db);
+      showToast('Oferta finalizada.', 'info');
+      render();
+    };
+
+    // Render principal
     function render() {
       const appEl = document.getElementById('app');
       if (!appEl) return;
 
       let screenHtml = '';
-      switch (ui.route) {
-        case 'TIENDAS':
-          screenHtml = renderStoresDirectory();
-          break;
-        case 'OFERTAS':
-          screenHtml = renderOffersPage();
-          break;
-        case 'QUIERO_VENDER':
-          screenHtml = renderRegisterStoreWizard();
-          break;
-        case 'TIENDA_PERFIL':
-          screenHtml = renderStoreProfile();
-          break;
-        case 'PANEL_TIENDA':
-          screenHtml = renderVendorPanel();
-          break;
-        case 'PANEL_ADMIN':
-          screenHtml = renderAdminPanel();
-          break;
-        case 'INICIO':
-        default:
-          screenHtml = renderHome();
-          break;
+      if (ui.route === 'INICIO') {
+        screenHtml = renderHome();
+      } else if (ui.route === 'TIENDAS') {
+        screenHtml = renderStoresDirectory();
+      } else if (ui.route === 'OFERTAS') {
+        screenHtml = renderOffersPage();
+      } else if (ui.route === 'QUIERO_VENDER') {
+        screenHtml = renderRegisterStoreWizard();
+      } else if (ui.route === 'TIENDA_PERFIL') {
+        screenHtml = renderStoreProfile();
+      } else if (ui.route === 'PANEL_TIENDA') {
+        screenHtml = renderVendorPanel();
+      } else if (ui.route === 'PANEL_ADMIN') {
+        screenHtml = renderAdminPanel();
+      } else {
+        screenHtml = renderHome();
       }
-
-      const showFloatingCart = !ui.cartOpen && ui.route !== 'PANEL_TIENDA' && ui.route !== 'PANEL_ADMIN';
 
       appEl.innerHTML = `
         ${renderHeader()}
         ${screenHtml}
+        ${renderFloatingCartButton()}
         ${renderFooter()}
-        ${showFloatingCart ? renderFloatingCartButton() : ''}
         ${renderCartDrawer()}
       `;
-
-      bindDynamicForms();
     }
 
+    attachGlobalEventListeners();
     render();
     fetchSheetDataOnLoad();
   </script>
