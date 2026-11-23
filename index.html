@@ -132,6 +132,17 @@
       return undefined;
     }
 
+    function fixDriveImageUrl(url) {
+      if (!url || typeof url !== 'string') return url;
+      const trimmed = url.trim();
+      if (trimmed.startsWith('data:image/')) return trimmed;
+      const matchId = trimmed.match(/(?:drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=view&)?id=|thumbnail\?id=))([a-zA-Z0-9_-]+)/);
+      if (matchId && matchId[1]) {
+        return `https://drive.google.com/thumbnail?id=${matchId[1]}&sz=w1000`;
+      }
+      return trimmed;
+    }
+
     function makeSvgFallbackDataUri(label = 'Mercado Tres Arroyos', bgHex = '#1A2A44') {
       const safeLabel = String(label || 'Tres Arroyos').slice(0, 26).replace(/[<>&"]/g, '');
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><rect width="800" height="600" fill="${bgHex}"/><circle cx="400" cy="245" r="78" fill="#ffffff" fill-opacity="0.14"/><text x="400" y="262" text-anchor="middle" fill="#ffffff" font-family="Inter,Arial,sans-serif" font-size="44" font-weight="800">TA</text><text x="400" y="385" text-anchor="middle" fill="#ffffff" font-family="Inter,Arial,sans-serif" font-size="28" font-weight="700">${safeLabel}</text><text x="400" y="425" text-anchor="middle" fill="#ffffff" fill-opacity="0.75" font-family="Inter,Arial,sans-serif" font-size="18">Tres Arroyos · Comprá local</text></svg>`;
@@ -1299,7 +1310,7 @@
 
       const nombre = String(rawNombre || 'Tienda local').trim();
       const id = String(rawId || ('tienda-' + slugify(nombre))).trim();
-      const estadoRaw = String(getFieldInsensitive(row, 'Estado', 'estadoSuscripcion', 'estado') || 'ACTIVA').trim().toUpperCase();
+      const estadoRaw = String(getFieldInsensitive(row, 'Estado Plan', 'Estado', 'estadoSuscripcion', 'estado') || 'ACTIVA').trim().toUpperCase();
       const envioRaw = getFieldInsensitive(row, 'Envío', 'Envio', 'envio', 'haceEnvios');
       const metodosRaw = getFieldInsensitive(row, 'Métodos pago', 'Metodos pago', 'MetodosPago', 'metodosPago', 'metodospago');
       const fechaRaw = getFieldInsensitive(row, 'Fecha registro', 'FechaRegistro', 'fecharegistro', 'fechaRegistro');
@@ -1313,15 +1324,15 @@
         nombre,
         dueno: String(getFieldInsensitive(row, 'Dueño', 'Dueno', 'dueno') || nombre).trim(),
         email: String(getFieldInsensitive(row, 'Email', 'email', 'Correo', 'correo') || '').trim().toLowerCase(),
-        password: passRaw !== undefined && passRaw !== null ? String(passRaw).trim() : '',
+        password: passRaw !== undefined && passRaw !== null ? String(passRaw).replace(/^'/, '').trim() : '',
         esPlantillaDemo: id === DEMO_TEMPLATE_ID,
         rubro: String(getFieldInsensitive(row, 'Rubro', 'rubro', 'Categoría', 'Categoria') || 'Otros').trim(),
         barrio: String(getFieldInsensitive(row, 'Barrio', 'barrio') || 'Centro').trim(),
         direccion: String(getFieldInsensitive(row, 'Dirección', 'Direccion', 'direccion') || '').trim(),
         whatsapp: String(getFieldInsensitive(row, 'WhatsApp', 'Whatsapp', 'whatsapp', 'Telefono', 'Teléfono') || '').trim(),
         instagram: String(getFieldInsensitive(row, 'Instagram', 'instagram') || '').trim(),
-        logo: String(getFieldInsensitive(row, 'Logo', 'logo') || '').trim() || makeSvgFallbackDataUri(nombre, '#1A2A44'),
-        portada: String(getFieldInsensitive(row, 'Portada', 'portada') || '').trim() || makeSvgFallbackDataUri(nombre, '#2E7D32'),
+        logo: fixDriveImageUrl(String(getFieldInsensitive(row, 'Logo', 'logo') || '').trim()) || makeSvgFallbackDataUri(nombre, '#1A2A44'),
+        portada: fixDriveImageUrl(String(getFieldInsensitive(row, 'Portada', 'portada') || '').trim()) || makeSvgFallbackDataUri(nombre, '#2E7D32'),
         descripcion: String(getFieldInsensitive(row, 'Descripción', 'Descripcion', 'descripcion') || '').trim(),
         antiguedadTexto: String(getFieldInsensitive(row, 'Antiguedad', 'Antigüedad', 'antiguedadTexto') || 'En Tres Arroyos').trim(),
         rating: Number(getFieldInsensitive(row, 'Rating', 'rating')) || 4.9,
@@ -1353,7 +1364,7 @@
       const nombre = String(rawNombre || 'Producto').trim();
       const id = String(rawId || ('prod-' + slugify(nombre))).trim();
       const tiendaId = String(getFieldInsensitive(row, 'TiendaID', 'tiendaId', 'tienda_id', 'Tienda') || '').trim();
-      const rawFotos = parseListField(getFieldInsensitive(row, 'Fotos', 'fotos', 'Foto', 'foto'), []);
+      const rawFotos = parseListField(getFieldInsensitive(row, 'Fotos', 'fotos', 'Foto', 'foto'), []).map(fixDriveImageUrl);
       const fotos = rawFotos.length > 0 ? rawFotos : [makeSvgFallbackDataUri(nombre, '#1A2A44')];
       const precio = Number(getFieldInsensitive(row, 'Precio', 'precio')) || 0;
       const rawOffer = getFieldInsensitive(row, 'Precio oferta', 'PrecioOferta', 'precioOferta', 'Oferta');
@@ -1447,7 +1458,7 @@
             fecha: String(getFieldInsensitive(r, 'Fecha', 'fecha') || 'Hoy'),
             estrellas: Number(getFieldInsensitive(r, 'Estrellas', 'estrellas')) || 5,
             comentario: String(getFieldInsensitive(r, 'Comentario', 'comentario') || ''),
-            fotoProducto: String(getFieldInsensitive(r, 'Foto', 'foto', 'fotoProducto') || '')
+            fotoProducto: fixDriveImageUrl(String(getFieldInsensitive(r, 'Foto', 'foto', 'fotoProducto') || ''))
           });
         });
         db.resenas = Array.from(byRevId.values());
@@ -1827,7 +1838,11 @@
     }
 
     function getVisibleStores() {
-      return db.tiendas.filter(t => String(t.estadoSuscripcion || 'ACTIVA').toUpperCase() === 'ACTIVA');
+      const hiddenStates = ['VENCIDA', 'VENCIDO', 'INACTIVA', 'INACTIVO', 'PAUSADA', 'SUSPENDIDA', 'BAJA'];
+      return db.tiendas.filter(t => {
+        const estado = String(t.estadoSuscripcion || 'ACTIVA').trim().toUpperCase();
+        return !hiddenStates.includes(estado);
+      });
     }
 
     function getStoreById(id) {
@@ -2017,13 +2032,15 @@
     }
 
     function renderSafeImage(src, alt, className = '', fallbackDataUri = SAMPLE_FALLBACK_PHOTO) {
-      const cleanSrc = (src && String(src).trim()) ? String(src).trim() : fallbackDataUri;
+      const fixed = fixDriveImageUrl(src);
+      const cleanSrc = (fixed && String(fixed).trim()) ? String(fixed).trim() : fallbackDataUri;
       const safeFb = fallbackDataUri || SAMPLE_FALLBACK_PHOTO;
       return `
         <img
           src="${escapeHtml(cleanSrc)}"
           alt="${escapeHtml(alt || 'Mercado Tres Arroyos')}"
           loading="lazy"
+          referrerpolicy="no-referrer"
           class="w-full h-full object-cover ${className}"
           onerror="if(this.dataset.fbDone!=='1'){this.dataset.fbDone='1';this.src='${escapeHtml(safeFb)}';}"
         />
@@ -3910,27 +3927,18 @@
 
       return `
         <div class="space-y-5">
-          ${newOrdersCount > 0 ? `
-            <div class="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-center justify-between gap-3">
-              <span class="font-extrabold text-sm text-amber-900">Tenés ${newOrdersCount} pedido${newOrdersCount > 1 ? 's' : ''} nuevo${newOrdersCount > 1 ? 's' : ''}</span>
-              <button type="button" onclick="window.__vendorMarkAllOrdersSeen('${store.id}')" class="text-xs font-bold text-[#1A2A44] underline">Marcar vistos</button>
-            </div>
-          ` : ''}
-
-          <div class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center gap-3 justify-between">
-            <h2 class="font-extrabold text-lg text-[#1A2A44]">Mis pedidos</h2>
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div class="flex items-center gap-2 flex-wrap">
-              <select onchange="ui.vendorOrderDateFilter = this.value; render();" class="min-h-[44px] px-3 rounded-xl border border-slate-300 bg-white text-xs font-bold">
+              <span class="text-xs font-extrabold text-[#1A2A44]">Pedidos (${filtered.length})</span>
+              ${newOrdersCount > 0 ? `<span class="px-2.5 py-0.5 rounded-full bg-[#E53935] text-white text-xs font-extrabold">${newOrdersCount} nuevos</span>` : ''}
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <select onchange="ui.vendorOrderDateFilter = this.value; render();" class="min-h-[42px] px-3 rounded-xl border border-slate-300 bg-white text-xs font-bold">
                 <option value="Todos" ${ui.vendorOrderDateFilter === 'Todos' ? 'selected' : ''}>Todos</option>
                 <option value="Hoy" ${ui.vendorOrderDateFilter === 'Hoy' ? 'selected' : ''}>Hoy</option>
-                <option value="Esta semana" ${ui.vendorOrderDateFilter === 'Esta semana' ? 'selected' : ''}>Esta semana</option>
               </select>
-              <select onchange="ui.vendorOrderStatusFilter = this.value; render();" class="min-h-[44px] px-3 rounded-xl border border-slate-300 bg-white text-xs font-bold">
-                <option value="Todos" ${ui.vendorOrderStatusFilter === 'Todos' ? 'selected' : ''}>Todos los estados</option>
-                <option value="Nuevo" ${ui.vendorOrderStatusFilter === 'Nuevo' ? 'selected' : ''}>Nuevo</option>
-                <option value="Confirmado" ${ui.vendorOrderStatusFilter === 'Confirmado' ? 'selected' : ''}>Confirmado</option>
-                <option value="Entregado" ${ui.vendorOrderStatusFilter === 'Entregado' ? 'selected' : ''}>Entregado</option>
-                <option value="No retiró" ${ui.vendorOrderStatusFilter === 'No retiró' ? 'selected' : ''}>No retiró</option>
+              <select onchange="ui.vendorOrderStatusFilter = this.value; render();" class="min-h-[42px] px-3 rounded-xl border border-slate-300 bg-white text-xs font-bold">
+                ${['Todos', 'Nuevo', 'Confirmado', 'Entregado', 'Cancelado'].map(s => `<option value="${s}" ${ui.vendorOrderStatusFilter === s ? 'selected' : ''}>${s}</option>`).join('')}
               </select>
             </div>
           </div>
@@ -3938,138 +3946,107 @@
           ${filtered.length > 0 ? `
             <div class="space-y-4">
               ${filtered.map(ord => {
-                const firstThumb = (ord.items && ord.items[0] && ord.items[0].foto) || store.logo || SAMPLE_FALLBACK_PHOTO;
-                const itemsText = (ord.items || []).map(i => `${i.cantidad}x ${i.nombre}`).join(', ');
-                const summaryCopy = `Pedido ${ord.id} · ${ord.cliente} (${ord.barrio}, ${ord.direccion}) · ${itemsText} · Total ${formatARS(ord.total)}`;
-
+                const itemsList = Array.isArray(ord.items) ? ord.items : [];
                 return `
-                  <article class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="flex items-center gap-3 min-w-0">
-                        <div class="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 shrink-0">
-                          ${renderSafeImage(firstThumb, ord.cliente)}
+                  <article class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
+                    <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <span class="font-extrabold text-sm text-[#1A2A44]">#${escapeHtml(ord.id)}</span>
+                          <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold ${statusBadge(ord.estado)}">${escapeHtml(ord.estado)}</span>
                         </div>
-                        <div class="min-w-0">
-                          <div class="flex items-center gap-2 flex-wrap">
-                            <span class="font-extrabold text-sm text-[#111111]">${escapeHtml(ord.cliente)}</span>
-                            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold ${statusBadge(ord.estado)}">${escapeHtml(ord.estado)}</span>
-                          </div>
-                          <div class="text-xs text-[#666666]">${escapeHtml(ord.fecha)} · 📍 ${escapeHtml(ord.barrio)} · ${escapeHtml(ord.direccion)}</div>
-                          <div class="text-xs font-bold text-[#1A2A44] mt-0.5">${escapeHtml(itemsText)} · ${formatARS(ord.total)}</div>
-                          ${ord.nota ? `<div class="text-xs text-[#666666] mt-0.5">Nota: ${escapeHtml(ord.nota)}</div>` : ''}
+                        <div class="text-xs text-[#666666] mt-0.5">
+                          Cliente: <strong class="text-[#111111]">${escapeHtml(ord.cliente)}</strong> · Barrio: ${escapeHtml(ord.barrio)} · ${escapeHtml(ord.fecha)}
                         </div>
                       </div>
+                      <div class="text-lg font-extrabold text-[#111111]">${formatARS(ord.total)}</div>
                     </div>
 
-                    <div class="flex items-center gap-2 flex-wrap pt-2 border-t border-slate-100">
-                      <button type="button" onclick="window.__vendorSetOrderStatus('${ord.id}', 'Confirmado')" class="min-h-[38px] px-3 py-1.5 rounded-xl bg-blue-50 text-blue-800 text-xs font-bold">Confirmado</button>
-                      <button type="button" onclick="window.__vendorSetOrderStatus('${ord.id}', 'Entregado')" class="min-h-[38px] px-3 py-1.5 rounded-xl bg-emerald-50 text-[#2E7D32] text-xs font-bold">Entregado</button>
-                      <button type="button" onclick="window.__vendorSetOrderStatus('${ord.id}', 'No retiró')" class="min-h-[38px] px-3 py-1.5 rounded-xl bg-red-50 text-[#E53935] text-xs font-bold">No retiró</button>
-                      <button type="button" onclick="openWhatsAppUrl('${escapeHtml(store.whatsapp)}', \`${escapeHtml(summaryCopy)}\`)" class="min-h-[38px] px-3 py-1.5 rounded-xl bg-[#25D366] text-white text-xs font-bold">Ver en WhatsApp</button>
-                      <button type="button" onclick="copyToClipboard(\`${escapeHtml(summaryCopy)}\`, 'Pedido copiado para WhatsApp')" class="min-h-[38px] px-3 py-1.5 rounded-xl bg-slate-100 text-[#111111] text-xs font-bold">Copiar pedido</button>
+                    <div class="mt-3 space-y-1.5 text-xs">
+                      ${itemsList.length > 0 ? itemsList.map(it => `
+                        <div class="flex justify-between text-[#111111]">
+                          <span>${it.cantidad || 1}x ${escapeHtml(it.nombre || 'Producto')}</span>
+                          <span class="font-bold">${formatARS((it.precioUnitario || it.precio || 0) * (it.cantidad || 1))}</span>
+                        </div>
+                      `).join('') : `<div class="text-[#666666]">Pedido registrado</div>`}
+                      ${ord.direccion ? `<div class="text-[#666666] pt-1">Dirección: ${escapeHtml(ord.direccion)}</div>` : ''}
+                      ${ord.nota ? `<div class="text-amber-800 bg-amber-50 px-3 py-1.5 rounded-lg mt-1">Nota: ${escapeHtml(ord.nota)}</div>` : ''}
+                    </div>
+
+                    <div class="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2 flex-wrap">
+                      <button type="button" onclick="window.__vendorSetOrderStatus('${ord.id}', 'Confirmado')" class="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold">
+                        Confirmar
+                      </button>
+                      <button type="button" onclick="window.__vendorSetOrderStatus('${ord.id}', 'Entregado')" class="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-[#2E7D32] text-white text-xs font-bold">
+                        Marcar entregado
+                      </button>
+                      <button type="button" onclick="window.__vendorSetOrderStatus('${ord.id}', 'Cancelado')" class="min-h-[40px] px-3.5 py-1.5 rounded-xl bg-slate-100 text-[#E53935] text-xs font-bold">
+                        Cancelar
+                      </button>
+                      <button type="button" onclick="window.__vendorContactOrderClient('${ord.id}')" class="ml-auto min-h-[40px] px-3.5 py-1.5 rounded-xl bg-[#25D366] text-white text-xs font-bold flex items-center gap-1">
+                        <span>💬 Contactar por WhatsApp</span>
+                      </button>
                     </div>
                   </article>
                 `;
               }).join('')}
             </div>
           ` : `
-            <div class="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center">
-              <p class="font-bold text-base text-[#111111]">Todavía no tenés pedidos.</p>
-              <button type="button" onclick="copyToClipboard('https://mercadotresarroyos.com/tienda/${store.slug}', '¡Link de tu tienda copiado!')" class="mt-4 min-h-[48px] px-5 py-2.5 rounded-[12px] bg-[#1A2A44] text-white font-bold text-sm">
-                Compartir mi tienda
-              </button>
+            <div class="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center text-sm text-[#666666]">
+              No hay pedidos que coincidan con este filtro.
             </div>
           `}
         </div>
       `;
     }
 
-    function renderFooter() {
-      const supportWaMsg = 'Hola equipo de Mercado Tres Arroyos, quería hacer una consulta.';
-      return `
-        <footer class="bg-slate-50 border-t border-slate-200 mt-auto">
-          <div class="max-w-7xl mx-auto px-4 sm:px-6 py-10">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div>
-                <div class="font-extrabold text-lg text-[#1A2A44]">MERCADO TRES ARROYOS</div>
-                <p class="mt-2 text-xs sm:text-sm text-[#666666] leading-relaxed">
-                  Comprá local en Tres Arroyos. Tiendas, ofertas y envíos de tu ciudad en un solo lugar, con pedidos directos por WhatsApp.
-                </p>
-              </div>
-
-              <div>
-                <div class="font-extrabold text-sm text-[#1A2A44] mb-3">Enlaces rápidos</div>
-                <ul class="space-y-2 text-xs sm:text-sm font-semibold text-[#111111]">
-                  <li><button type="button" onclick="navigate('INICIO')" class="hover:underline">Inicio</button></li>
-                  <li><button type="button" onclick="navigate('TIENDAS')" class="hover:underline">Tiendas</button></li>
-                  <li><button type="button" onclick="navigate('OFERTAS')" class="hover:underline">Ofertas del día</button></li>
-                  <li><button type="button" onclick="navigate('QUIERO_VENDER')" class="hover:underline">Quiero vender</button></li>
-                </ul>
-              </div>
-
-              <div>
-                <div class="font-extrabold text-sm text-[#1A2A44] mb-3">Contacto y acceso</div>
-                <div class="flex flex-col gap-2.5">
-                  <button type="button" onclick="openWhatsAppUrl(SUPPORT_WHATSAPP, '${supportWaMsg}')" class="min-h-[44px] px-4 py-2 rounded-xl bg-[#25D366] text-white font-bold text-xs sm:text-sm inline-flex items-center gap-2 w-fit">
-                    <span>💬 WhatsApp soporte</span>
-                  </button>
-                  <button type="button" onclick="openLoginModal()" class="min-h-[44px] px-4 py-2 rounded-xl border border-slate-300 bg-white hover:border-[#1A2A44] text-[#111111] font-bold text-xs sm:text-sm inline-flex items-center gap-2 w-fit">
-                    <span>🔐 Ingresar a mi tienda</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="mt-8 pt-6 border-t border-slate-200 text-xs text-[#666666] flex flex-col sm:flex-row items-center justify-between gap-2">
-              <span>© ${new Date().getFullYear()} Mercado Tres Arroyos · Tres Arroyos, Buenos Aires.</span>
-              <span>Comprá local. Todo Tres Arroyos en un solo lugar.</span>
-            </div>
-          </div>
-        </footer>
-      `;
-    }
-
     // MODALES
-    function closeModal() {
-      const modal = document.getElementById('modal-container');
-      if (!modal) return;
-      modal.classList.add('hidden');
-      modal.classList.remove('flex');
-      modal.innerHTML = '';
+    function openModal(htmlContent) {
+      const mc = document.getElementById('modal-container');
+      if (!mc) return;
+      mc.innerHTML = `<div class="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] overflow-y-auto">${htmlContent}</div>`;
+      mc.classList.remove('hidden');
+      mc.classList.add('flex');
     }
 
-    function openModalHtml(html) {
-      const modal = document.getElementById('modal-container');
-      if (!modal) return;
-      modal.innerHTML = html;
-      modal.classList.remove('hidden');
-      modal.classList.add('flex');
+    function closeModal() {
+      const mc = document.getElementById('modal-container');
+      if (!mc) return;
+      mc.innerHTML = '';
+      mc.classList.add('hidden');
+      mc.classList.remove('flex');
     }
 
     function openProductDetailModal(productId) {
       const prod = db.productos.find(p => p.id === productId);
       if (!prod) return;
-      const store = getStoreById(prod.tiendaId) || { nombre: 'Tienda local', slug: 'tortas-de-maru', barrio: 'Centro', whatsapp: SUPPORT_WHATSAPP };
+      const store = getStoreById(prod.tiendaId) || getVisibleStores()[0];
       const pricing = getEffectivePrice(prod);
-      const photos = (prod.fotos && prod.fotos.length > 0) ? prod.fotos : [SAMPLE_FALLBACK_PHOTO];
+      const photos = (Array.isArray(prod.fotos) && prod.fotos.length > 0) ? prod.fotos : [SAMPLE_FALLBACK_PHOTO];
 
-      openModalHtml(`
-        <div class="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-7 shadow-2xl relative my-auto max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
-          <button type="button" onclick="closeModal()" aria-label="Cerrar" class="absolute top-4 right-4 min-h-[42px] min-w-[42px] rounded-xl bg-slate-100 hover:bg-slate-200 font-bold text-base flex items-center justify-center">
-            ✕
-          </button>
+      openModal(`
+        <div class="p-5 sm:p-6">
+          <div class="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
+            <div>
+              <button type="button" onclick="closeModal(); navigate('TIENDA_PERFIL', { storeSlug: '${store ? store.slug : 'tortas-de-maru'}' });" class="text-xs font-extrabold text-[#1A2A44] hover:underline">
+                🏪 ${escapeHtml(store ? store.nombre : 'Tienda')} · ${escapeHtml(store ? store.barrio : 'Tres Arroyos')}
+              </button>
+              <h2 class="font-extrabold text-xl sm:text-2xl text-[#111111] mt-0.5">${escapeHtml(prod.nombre)}</h2>
+            </div>
+            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold text-base flex items-center justify-center shrink-0">✕</button>
+          </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <div class="space-y-2.5">
+          <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
               <div class="aspect-square w-full rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
-                ${renderSafeImage(photos[0], prod.nombre, '', SAMPLE_FALLBACK_PHOTO)}
+                ${renderSafeImage(photos[0], prod.nombre, '', SAMPLE_FALLBACK_PHOTO, 'modal-main-prod-img')}
               </div>
               ${photos.length > 1 ? `
-                <div class="grid grid-cols-3 gap-2">
-                  ${photos.slice(0, 3).map(ph => `
-                    <div class="aspect-square rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                      ${renderSafeImage(ph, prod.nombre)}
-                    </div>
+                <div class="mt-2.5 flex items-center gap-2 overflow-x-auto no-scrollbar">
+                  ${photos.map((ph, idx) => `
+                    <button type="button" onclick="document.getElementById('modal-main-prod-img').src = '${escapeHtml(fixDriveImageUrl(ph))}';" class="w-16 h-16 rounded-xl overflow-hidden border-2 ${idx === 0 ? 'border-[#1A2A44]' : 'border-slate-200'} shrink-0">
+                      ${renderSafeImage(ph, prod.nombre + ' ' + (idx + 1))}
+                    </button>
                   `).join('')}
                 </div>
               ` : ''}
@@ -4077,38 +4054,39 @@
 
             <div class="flex flex-col justify-between">
               <div>
-                <button type="button" onclick="closeModal(); navigate('TIENDA_PERFIL', { storeSlug: '${store.slug}' });" class="text-xs font-extrabold text-[#1A2A44] hover:underline">
-                  🏪 ${escapeHtml(store.nombre)} · 📍 ${escapeHtml(store.barrio)}
-                </button>
-
-                <h2 class="mt-1 font-extrabold text-xl sm:text-2xl text-[#111111]">
-                  ${escapeHtml(prod.nombre)}
-                </h2>
-
-                <div class="mt-3">
-                  ${pricing.hasOffer ? `
-                    <div class="text-sm text-[#666666] line-through">${formatARS(pricing.originalPrice)}</div>
-                  ` : ''}
-                  <div class="flex items-center gap-2">
-                    <span class="text-2xl font-extrabold ${pricing.hasOffer ? 'text-[#E53935]' : 'text-[#111111]'}">${formatARS(pricing.finalPrice)}</span>
-                    ${pricing.hasOffer ? `<span class="px-2 py-0.5 rounded-md bg-[#E53935] text-white text-xs font-extrabold">-${pricing.discountPct}%</span>` : ''}
-                  </div>
+                <div class="flex items-center gap-2 flex-wrap mb-2">
+                  ${!prod.stockDisponible ? `<span class="px-2.5 py-0.5 rounded-md bg-[#9E9E9E] text-white text-xs font-extrabold">AGOTADO</span>` : ''}
+                  ${pricing.hasOffer ? `<span class="px-2.5 py-0.5 rounded-md bg-[#E53935] text-white text-xs font-extrabold">-${pricing.discountPct}% OFF</span>` : ''}
+                  ${prod.esNuevo ? `<span class="px-2.5 py-0.5 rounded-md bg-[#7C4DFF] text-white text-xs font-extrabold">NUEVO</span>` : ''}
                 </div>
 
-                <p class="mt-4 text-sm text-[#111111] leading-relaxed">
-                  ${escapeHtml(prod.descripcion || 'Producto local disponible en Tres Arroyos.')}
-                </p>
+                ${pricing.hasOffer ? `<div class="text-sm text-[#666666] line-through">${formatARS(pricing.originalPrice)}</div>` : ''}
+                <div class="text-3xl font-extrabold ${pricing.hasOffer ? 'text-[#E53935]' : 'text-[#111111]'}">${formatARS(pricing.finalPrice)}</div>
 
-                <div class="mt-3 text-xs font-bold ${prod.stockDisponible ? 'text-[#2E7D32]' : 'text-[#E53935]'}">
-                  ${prod.stockDisponible ? '✓ Disponible para pedido' : '✕ Agotado por el momento'}
+                <p class="mt-3 text-sm text-[#111111] leading-relaxed">${escapeHtml(prod.descripcion || 'Producto disponible en Mercado Tres Arroyos.')}</p>
+
+                <div class="mt-4 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+                  <div><strong>Tienda:</strong> ${escapeHtml(store ? store.nombre : '')} (${escapeHtml(store ? store.barrio : '')})</div>
+                  <div><strong>Envío:</strong> ${store && store.haceEnvios ? `${formatARS(store.precioEnvio)}${store.envioGratisDesde ? ` · Gratis desde ${formatARS(store.envioGratisDesde)}` : ''}` : 'Retiro en local'}</div>
+                  <div><strong>Pagos:</strong> ${escapeHtml((store && store.metodosPago ? store.metodosPago : ['Efectivo', 'Transferencia']).join(', '))}</div>
                 </div>
               </div>
 
-              <div class="mt-6 space-y-2">
-                <button type="button" ${!prod.stockDisponible ? 'disabled' : ''} onclick="closeModal(); quickBuyWhatsApp('${prod.id}');" class="min-h-[48px] w-full px-4 py-2.5 rounded-[12px] bg-[#25D366] hover:bg-[#1EB956] text-white font-extrabold text-sm flex items-center justify-center gap-2 ${!prod.stockDisponible ? 'opacity-50 cursor-not-allowed' : ''}">
+              <div class="mt-5 space-y-2.5">
+                <button
+                  type="button"
+                  ${!prod.stockDisponible ? 'disabled' : ''}
+                  onclick="closeModal(); quickBuyWhatsApp('${prod.id}');"
+                  class="min-h-[50px] w-full px-4 py-3 rounded-[12px] bg-[#25D366] hover:bg-[#1EB956] text-white font-extrabold text-sm flex items-center justify-center gap-2 ${!prod.stockDisponible ? 'opacity-50 cursor-not-allowed' : ''}"
+                >
                   <span>💬 Pedir por WhatsApp</span>
                 </button>
-                <button type="button" ${!prod.stockDisponible ? 'disabled' : ''} onclick="closeModal(); addToCart('${prod.id}', 1);" class="min-h-[48px] w-full px-4 py-2.5 rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm ${!prod.stockDisponible ? 'opacity-50 cursor-not-allowed' : ''}">
+                <button
+                  type="button"
+                  ${!prod.stockDisponible ? 'disabled' : ''}
+                  onclick="addToCart('${prod.id}', 1); closeModal();"
+                  class="min-h-[48px] w-full px-4 py-2.5 rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-bold text-sm ${!prod.stockDisponible ? 'opacity-50 cursor-not-allowed' : ''}"
+                >
                   + Agregar al carrito
                 </button>
               </div>
@@ -4118,176 +4096,78 @@
       `);
     }
 
-    function openLoginModal() {
-      openModalHtml(`
-        <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl relative my-auto" onclick="event.stopPropagation()">
-          <button type="button" onclick="closeModal()" aria-label="Cerrar" class="absolute top-4 right-4 min-h-[40px] min-w-[40px] rounded-xl bg-slate-100 font-bold">✕</button>
-
-          <span class="text-xs font-extrabold uppercase tracking-wider text-[#25D366]">Acceso de tiendas</span>
-          <h2 class="font-extrabold text-2xl text-[#1A2A44] mt-0.5">Ingresar a mi tienda</h2>
-          <p class="text-xs text-[#666666] mt-1">Entrá con tu email y contraseña para gestionar tu tienda, productos y pedidos.</p>
-
-          <form id="login-form" class="mt-5 space-y-4">
-            <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Email</label>
-              <input id="login-email" type="email" required placeholder="tu-tienda@correo.com" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]" />
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Contraseña</label>
-              <input id="login-pass" type="password" required placeholder="••••••••" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]" />
-            </div>
-            <button type="submit" class="min-h-[50px] w-full px-5 py-3 rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm">
-              Entrar
-            </button>
-          </form>
-
-          <div class="mt-5 pt-4 border-t border-slate-200 space-y-2 text-xs">
-            <div class="font-bold text-[#666666]">Tienda plantilla de guía:</div>
-            <div class="bg-slate-50 p-3 rounded-xl flex items-center justify-between gap-2">
-              <div class="min-w-0">
-                <div class="font-bold text-[#111111] truncate">Plantilla: ${DEMO_TEMPLATE_EMAIL} / ${DEMO_TEMPLATE_PASS}</div>
-                <div class="text-[#666666]">Abrí el panel de guía y guardala con tus datos</div>
-              </div>
-              <button type="button" onclick="closeModal(); window.__openDemoTemplateAsVendor();" class="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#25D366] text-white font-bold shrink-0">
-                Abrir guía
-              </button>
-            </div>
-          </div>
-        </div>
-      `);
-
-      const loginForm = document.getElementById('login-form');
-      if (loginForm) {
-        loginForm.addEventListener('submit', (e) => {
-          e.preventDefault();
-          const emailVal = String(document.getElementById('login-email').value || '').trim().toLowerCase();
-          const passVal = String(document.getElementById('login-pass').value || '').trim();
-
-          const matchedStore = db.tiendas.find(t => {
-            const tEmail = String(t.email || '').trim().toLowerCase();
-            if (!tEmail || tEmail !== emailVal) return false;
-            const tPass = String(t.password || '').trim();
-            return !tPass || tPass === passVal;
-          });
-
-          if (matchedStore) {
-            ui.session = { role: 'VENDOR', storeId: matchedStore.id };
-            closeModal();
-            showToast(`Bienvenido al panel de ${matchedStore.nombre}.`, 'success');
-            navigate('PANEL_TIENDA');
-            return;
-          }
-
-          showToast('Email o contraseña incorrectos.', 'error');
-        });
-      }
-    }
-
     function openReviewModal(storeId) {
       const store = getStoreById(storeId);
       if (!store) return;
 
-      let selectedStars = 5;
-      let uploadedPhoto = '';
+      openModal(`
+        <div class="p-5 sm:p-6">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">Dejar reseña en ${escapeHtml(store.nombre)}</h2>
+            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
+          </div>
 
-      openModalHtml(`
-        <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl relative my-auto" onclick="event.stopPropagation()">
-          <button type="button" onclick="closeModal()" aria-label="Cerrar" class="absolute top-4 right-4 min-h-[40px] min-w-[40px] rounded-xl bg-slate-100 font-bold">✕</button>
-          <h2 class="font-extrabold text-xl text-[#1A2A44]">Dejar reseña · ${escapeHtml(store.nombre)}</h2>
-
-          <form id="review-form" class="mt-4 space-y-4">
+          <form id="review-submit-form" class="mt-4 space-y-4">
             <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Calificación</label>
-              <div id="star-selector" class="flex items-center gap-2">
-                ${[1, 2, 3, 4, 5].map(n => `
-                  <button type="button" data-star="${n}" class="star-btn min-h-[44px] px-3 rounded-xl border text-base font-extrabold ${n <= 5 ? 'bg-amber-50 border-amber-300 text-[#FFC107]' : 'bg-white border-slate-200 text-slate-400'}">
-                    ${n} ★
-                  </button>
-                `).join('')}
-              </div>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Tu nombre *</label>
+              <input id="rev-name" type="text" required placeholder="Ej: Valeria Gómez" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm" />
             </div>
 
             <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Tu nombre *</label>
-              <input id="rev-name" type="text" required placeholder="Ej: Mariana López" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm" />
+              <label class="block text-xs font-bold text-[#111111] mb-1">Calificación *</label>
+              <select id="rev-stars" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-bold">
+                <option value="5">★★★★★ (5 estrellas)</option>
+                <option value="4">★★★★☆ (4 estrellas)</option>
+                <option value="3">★★★☆☆ (3 estrellas)</option>
+                <option value="2">★★☆☆☆ (2 estrellas)</option>
+                <option value="1">★☆☆☆☆ (1 estrella)</option>
+              </select>
             </div>
 
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Comentario *</label>
-              <textarea id="rev-comment" rows="3" required placeholder="Contá cómo fue tu compra o atención..." class="w-full p-3 rounded-xl border border-slate-300 text-sm"></textarea>
+              <textarea id="rev-comment" rows="3" required placeholder="Contá cómo fue tu experiencia..." class="w-full p-3 rounded-xl border border-slate-300 text-sm"></textarea>
             </div>
 
             <div>
-              <label class="min-h-[42px] px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-[#111111] inline-flex items-center gap-1.5 cursor-pointer">
-                <span>📷 Subir foto opcional desde galería</span>
-                <input id="rev-photo-input" type="file" accept="image/*" class="hidden" />
-              </label>
-              <span id="rev-photo-status" class="text-[11px] text-[#2E7D32] font-bold ml-2"></span>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Foto del producto (opcional, desde galería)</label>
+              <input id="rev-photo-file" type="file" accept="image/*" class="w-full text-xs text-[#666666]" />
             </div>
 
-            <button type="submit" class="min-h-[50px] w-full px-5 py-3 rounded-[12px] bg-[#25D366] hover:bg-[#1EB956] text-white font-extrabold text-sm">
+            <button type="submit" class="min-h-[48px] w-full rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm">
               Publicar reseña
             </button>
           </form>
         </div>
       `);
 
-      document.querySelectorAll('.star-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          selectedStars = Number(btn.getAttribute('data-star')) || 5;
-          document.querySelectorAll('.star-btn').forEach(b => {
-            const val = Number(b.getAttribute('data-star'));
-            if (val <= selectedStars) {
-              b.className = 'star-btn min-h-[44px] px-3 rounded-xl border text-base font-extrabold bg-amber-50 border-amber-300 text-[#FFC107]';
-            } else {
-              b.className = 'star-btn min-h-[44px] px-3 rounded-xl border text-base font-extrabold bg-white border-slate-200 text-slate-400';
-            }
-          });
-        });
-      });
-
-      const photoInput = document.getElementById('rev-photo-input');
-      if (photoInput) {
-        photoInput.addEventListener('change', async (ev) => {
-          const f = ev.target.files && ev.target.files[0];
-          if (!f) return;
-          try {
-            uploadedPhoto = await readImageFileAsDataUrl(f);
-            const stEl = document.getElementById('rev-photo-status');
-            if (stEl) stEl.textContent = '✓ Foto lista';
-          } catch (_) {
-            showToast('No se pudo cargar la foto.', 'error');
-          }
-        });
-      }
-
-      const revForm = document.getElementById('review-form');
-      if (revForm) {
-        revForm.addEventListener('submit', (e) => {
+      const form = document.getElementById('review-submit-form');
+      if (form) {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
-          const cliente = document.getElementById('rev-name').value.trim();
-          const comentario = document.getElementById('rev-comment').value.trim();
-          if (!cliente || !comentario) return;
+          const cliente = String(document.getElementById('rev-name').value || '').trim();
+          const estrellas = Number(document.getElementById('rev-stars').value) || 5;
+          const comentario = String(document.getElementById('rev-comment').value || '').trim();
+          const fileInput = document.getElementById('rev-photo-file');
+          let fotoProducto = '';
+          if (fileInput && fileInput.files && fileInput.files[0]) {
+            try { fotoProducto = await readImageFileAsDataUrl(fileInput.files[0]); } catch (_) {}
+          }
 
           const newRev = {
             id: 'rev-' + Date.now(),
             tiendaId: store.id,
             cliente,
             avatar: makeSvgFallbackDataUri(cliente, '#1A2A44'),
-            fecha: 'Hoy',
-            estrellas: selectedStars,
+            fecha: 'Recién',
+            estrellas,
             comentario,
-            fotoProducto: uploadedPhoto
+            fotoProducto
           };
 
           db.resenas.unshift(newRev);
-          const allStoreRevs = db.resenas.filter(r => r.tiendaId === store.id);
           store.reviewCount = (store.reviewCount || 0) + 1;
-          if (selectedStars === 5) {
-            store.fiveStarCount = (store.fiveStarCount || 0) + 1;
-          }
-          const avg = allStoreRevs.reduce((acc, r) => acc + (Number(r.estrellas) || 5), 0) / allStoreRevs.length;
-          store.rating = Math.min(5, Math.max(1, Number(avg.toFixed(1))));
+          if (estrellas === 5) store.fiveStarCount = (store.fiveStarCount || 0) + 1;
 
           saveState(db);
           syncReviewToSheet(newRev);
@@ -4303,26 +4183,28 @@
       const store = getStoreById(storeId);
       if (!store) return;
 
-      openModalHtml(`
-        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative my-auto" onclick="event.stopPropagation()">
-          <button type="button" onclick="closeModal()" aria-label="Cerrar" class="absolute top-4 right-4 min-h-[40px] min-w-[40px] rounded-xl bg-slate-100 font-bold">✕</button>
-          <h2 class="font-extrabold text-xl text-[#1A2A44]">Reportar tienda</h2>
-          <p class="text-xs text-[#666666] mt-1">Tienda: <strong>${escapeHtml(store.nombre)}</strong></p>
-
-          <form id="report-store-form" class="mt-4 space-y-3.5">
+      openModal(`
+        <div class="p-5 sm:p-6">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h2 class="font-extrabold text-lg text-[#1A2A44]">Reportar tienda</h2>
+            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
+          </div>
+          <form id="report-store-form" class="mt-4 space-y-4">
+            <p class="text-xs text-[#666666]">Tienda: <strong>${escapeHtml(store.nombre)}</strong></p>
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Motivo</label>
               <select id="rep-reason" class="w-full min-h-[46px] px-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
                 <option value="Datos desactualizados">Datos desactualizados</option>
-                <option value="No responde">No responde</option>
-                <option value="Otro">Otro</option>
+                <option value="No responde por WhatsApp">No responde por WhatsApp</option>
+                <option value="Precios incorrectos">Precios incorrectos</option>
+                <option value="Otro motivo">Otro motivo</option>
               </select>
             </div>
             <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Detalle</label>
-              <textarea id="rep-detail" rows="3" required placeholder="Contanos brevemente qué ocurre..." class="w-full p-3 rounded-xl border border-slate-300 text-sm"></textarea>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Detalle (opcional)</label>
+              <textarea id="rep-detail" rows="2" class="w-full p-3 rounded-xl border border-slate-300 text-sm"></textarea>
             </div>
-            <button type="submit" class="min-h-[48px] w-full px-5 py-2.5 rounded-[12px] bg-[#1A2A44] text-white font-extrabold text-sm">
+            <button type="submit" class="min-h-[48px] w-full rounded-[12px] bg-[#E53935] text-white font-extrabold text-sm">
               Enviar reporte
             </button>
           </form>
@@ -4333,346 +4215,224 @@
       if (form) {
         form.addEventListener('submit', (e) => {
           e.preventDefault();
-          const reason = document.getElementById('rep-reason').value;
-          const detail = document.getElementById('rep-detail').value.trim();
           closeModal();
           showToast('Reporte enviado. Gracias por ayudar a cuidar la comunidad.', 'success');
-          openWhatsAppUrl(SUPPORT_WHATSAPP, `Reporte en Mercado Tres Arroyos: Tienda ${store.nombre} (${store.id}). Motivo: ${reason}. Detalle: ${detail}`);
         });
       }
     }
 
-    function openConfirmModal(title, message, onConfirmCallback) {
-      openModalHtml(`
-        <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl relative my-auto" onclick="event.stopPropagation()">
-          <h3 class="font-extrabold text-lg text-[#111111]">${escapeHtml(title)}</h3>
-          <p class="mt-2 text-sm text-[#666666]">${escapeHtml(message)}</p>
-          <div class="mt-5 flex items-center justify-end gap-2.5">
-            <button type="button" onclick="closeModal()" class="min-h-[44px] px-4 py-2 rounded-xl bg-slate-100 font-bold text-xs">Cancelar</button>
-            <button id="confirm-modal-accept" type="button" class="min-h-[44px] px-4 py-2 rounded-xl bg-[#E53935] text-white font-extrabold text-xs">Confirmar</button>
+    function openLoginModal() {
+      openModal(`
+        <div class="p-5 sm:p-6">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div>
+              <h2 class="font-extrabold text-xl text-[#1A2A44]">Ingresar a mi tienda</h2>
+              <p class="text-xs text-[#666666]">Accedé al panel con tu email y contraseña</p>
+            </div>
+            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
+          </div>
+
+          <form id="login-form" class="mt-4 space-y-4">
+            <div>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Email</label>
+              <input id="login-email" type="email" required placeholder="tu@correo.com" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Contraseña</label>
+              <input id="login-pass" type="password" required placeholder="••••••••" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm" />
+            </div>
+            <button type="submit" class="min-h-[50px] w-full rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm">
+              Entrar
+            </button>
+          </form>
+
+          <div class="mt-5 pt-4 border-t border-slate-100 flex flex-col gap-2.5 text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[#666666]">¿Querés ver cómo funciona usando una tienda plantilla de guía?</span>
+              <button type="button" onclick="closeModal(); window.__openDemoTemplateAsVendor();" class="font-extrabold text-[#2E7D32] hover:underline shrink-0">
+                Usar plantilla guía
+              </button>
+            </div>
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[#666666]">¿Todavía no tenés tienda?</span>
+              <button type="button" onclick="closeModal(); navigate('QUIERO_VENDER');" class="font-extrabold text-[#1A2A44] hover:underline shrink-0">
+                Crear mi tienda gratis
+              </button>
+            </div>
           </div>
         </div>
       `);
-      const btn = document.getElementById('confirm-modal-accept');
-      if (btn) {
-        btn.addEventListener('click', () => {
-          closeModal();
-          if (typeof onConfirmCallback === 'function') onConfirmCallback();
+
+      const loginForm = document.getElementById('login-form');
+      if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const submitBtn = loginForm.querySelector('button[type="submit"]');
+          const emailVal = String(document.getElementById('login-email').value || '').trim().toLowerCase();
+          const passVal = String(document.getElementById('login-pass').value || '').trim();
+
+          const findStore = () => db.tiendas.find(t => {
+            const tEmail = String(t.email || '').trim().toLowerCase();
+            if (!tEmail || tEmail !== emailVal) return false;
+            const tPass = String(t.password || '').replace(/^'/, '').trim();
+            return !tPass || tPass === passVal;
+          });
+
+          let matchedStore = findStore();
+
+          if (!matchedStore) {
+            if (submitBtn) {
+              submitBtn.disabled = true;
+              submitBtn.textContent = 'Buscando tienda en la nube...';
+            }
+            await fetchSheetDataOnLoad(false);
+            matchedStore = findStore();
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = 'Entrar';
+            }
+          }
+
+          if (matchedStore) {
+            ui.session = { role: 'VENDOR', storeId: matchedStore.id };
+            closeModal();
+            showToast(`Bienvenido al panel de ${matchedStore.nombre}.`, 'success');
+            navigate('PANEL_TIENDA');
+            return;
+          }
+
+          showToast('Email o contraseña incorrectos.', 'error');
         });
       }
     }
 
-    // HANDLERS
-    window.__openDemoTemplateAsVendor = function () {
-      ensureDemoTemplateExists();
-      ui.session = { role: 'VENDOR', storeId: DEMO_TEMPLATE_ID };
-      ui.vendorTab = 'MI_TIENDA';
-      ui.showProductForm = false;
-      ui.productFormDraft = null;
-      saveState(db);
-      navigate('PANEL_TIENDA');
-    };
+    function renderFooter() {
+      return `
+        <footer class="bg-[#1A2A44] text-white mt-auto">
+          <div class="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 text-sm">
+            <div>
+              <div class="font-extrabold text-lg tracking-tight">MERCADO TRES ARROYOS</div>
+              <p class="mt-2 text-white/75 text-xs leading-relaxed">
+                Comprá local. Todo Tres Arroyos en un solo lugar. Conectamos vecinos y emprendimientos locales con pedidos rápidos por WhatsApp.
+              </p>
+            </div>
 
-    window.__vendorToggleOpen = function (storeId) {
-      const st = getStoreById(storeId);
-      if (!st) return;
-      st.abiertoAhora = !st.abiertoAhora;
-      st.horarioTexto = st.abiertoAhora ? 'Abierto hoy · Atención activa' : 'Cerrado por hoy';
-      saveState(db);
-      syncStoreToSheet(st);
-      showToast(`Estado actualizado: ${st.abiertoAhora ? 'ABIERTO' : 'CERRADO'}.`, 'success');
-      render();
-    };
+            <div>
+              <div class="font-bold text-sm uppercase tracking-wider text-white/90 mb-3">Compradores</div>
+              <ul class="space-y-2 text-xs text-white/75">
+                <li><button type="button" onclick="navigate('INICIO')" class="hover:text-white">Inicio</button></li>
+                <li><button type="button" onclick="navigate('TIENDAS')" class="hover:text-white">Todas las tiendas</button></li>
+                <li><button type="button" onclick="navigate('OFERTAS')" class="hover:text-white">Ofertas del día</button></li>
+              </ul>
+            </div>
 
-    window.__vendorUploadStoreMedia = async function (event, field) {
-      const file = event.target.files && event.target.files[0];
-      if (!file) return;
-      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
-      if (!store) return;
-      try {
-        const dataUrl = await readImageFileAsDataUrl(file);
-        store[field] = dataUrl;
-        saveState(db);
-        syncStoreToSheet(store);
-        showToast(`${field === 'logo' ? 'Logo' : 'Portada'} actualizada desde galería.`, 'success');
-        render();
-      } catch (err) {
-        showToast(err.message || 'No se pudo subir la imagen.', 'error');
-      }
-    };
+            <div>
+              <div class="font-bold text-sm uppercase tracking-wider text-white/90 mb-3">Emprendedores</div>
+              <ul class="space-y-2 text-xs text-white/75">
+                <li><button type="button" onclick="navigate('QUIERO_VENDER')" class="hover:text-white">Quiero vender</button></li>
+                <li><button type="button" onclick="openLoginModal()" class="hover:text-white">Ingresar a mi tienda</button></li>
+                <li><button type="button" onclick="window.__openDemoTemplateAsVendor()" class="hover:text-white">Plantilla guía</button></li>
+              </ul>
+            </div>
 
-    window.__vendorClearStoreMedia = function (field) {
-      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
-      if (!store) return;
-      store[field] = makeSvgFallbackDataUri(store.nombre, field === 'logo' ? '#1A2A44' : '#2E7D32');
-      saveState(db);
-      syncStoreToSheet(store);
-      showToast('Imagen restablecida.', 'info');
-      render();
-    };
+            <div>
+              <div class="font-bold text-sm uppercase tracking-wider text-white/90 mb-3">Contacto</div>
+              <p class="text-xs text-white/75 mb-3">Tres Arroyos, Provincia de Buenos Aires.</p>
+              <button type="button" onclick="openWhatsAppUrl(SUPPORT_WHATSAPP, 'Hola Mercado Tres Arroyos, quiero hacer una consulta.')" class="min-h-[44px] px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#1EB956] text-white font-bold text-xs inline-flex items-center gap-1.5">
+                <span>💬 WhatsApp soporte</span>
+              </button>
+            </div>
+          </div>
 
-    window.__vendorCopyFirstDayHours = function () {
-      const firstStart = document.querySelector('[data-day-start="Lunes"]');
-      const firstEnd = document.querySelector('[data-day-end="Lunes"]');
-      const firstOpen = document.querySelector('[data-day-open="Lunes"]');
-      if (!firstStart || !firstEnd) return;
-      document.querySelectorAll('[data-day-start]').forEach(el => { el.value = firstStart.value; });
-      document.querySelectorAll('[data-day-end]').forEach(el => { el.value = firstEnd.value; });
-      if (firstOpen) {
-        document.querySelectorAll('[data-day-open]').forEach(el => { el.checked = firstOpen.checked; });
-      }
-      showToast('Horario copiado a todos los días.', 'info');
-    };
-
-    window.__vendorOpenNewProductForm = function (storeId) {
-      const store = getStoreById(storeId) || db.tiendas[0];
-      ui.showProductForm = true;
-      ui.productFormDraft = {
-        id: null,
-        tiendaId: store.id,
-        nombre: '',
-        precio: 10000,
-        precioOferta: null,
-        esNuevo: true,
-        stockDisponible: true,
-        cantidadStock: null,
-        categoria: store.rubro || 'Otros',
-        descripcion: '',
-        fotos: [makeSvgFallbackDataUri(store.nombre, '#1A2A44')]
-      };
-      render();
-    };
-
-    window.__vendorEditProduct = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      ui.showProductForm = true;
-      ui.productFormDraft = {
-        ...prod,
-        fotos: Array.isArray(prod.fotos) && prod.fotos.length > 0 ? [...prod.fotos] : [SAMPLE_FALLBACK_PHOTO]
-      };
-      render();
-    };
-
-    window.__vendorDuplicateProduct = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      const copy = {
-        ...prod,
-        id: 'prod-' + Date.now(),
-        nombre: `${prod.nombre} (copia)`,
-        fotos: Array.isArray(prod.fotos) ? [...prod.fotos] : [SAMPLE_FALLBACK_PHOTO]
-      };
-      db.productos.unshift(copy);
-      saveState(db);
-      syncProductToSheet(copy);
-      showToast('Producto duplicado.', 'success');
-      render();
-    };
-
-    window.__vendorToggleProductOffer = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      const existingOffer = getOfferForProduct(prod.id);
-      if (existingOffer || (prod.precioOferta && prod.precioOferta < prod.precio)) {
-        prod.precioOferta = null;
-        const removedOffer = db.ofertas.find(o => o.productoId === prod.id);
-        db.ofertas = db.ofertas.filter(o => o.productoId !== prod.id);
-        saveState(db);
-        syncProductToSheet(prod);
-        if (removedOffer) syncOfferToSheet(removedOffer, 'delete');
-        showToast('Oferta quitada del producto.', 'info');
-      } else {
-        const suggested = Math.max(100, Math.round((prod.precio * 0.85) / 100) * 100);
-        prod.precioOferta = suggested;
-        const newOffer = {
-          id: 'of-' + Date.now(),
-          productoId: prod.id,
-          tiendaId: prod.tiendaId,
-          precioOferta: suggested,
-          hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
-          destacada: false
-        };
-        db.ofertas.push(newOffer);
-        saveState(db);
-        syncProductToSheet(prod);
-        syncOfferToSheet(newOffer);
-        showToast(`Oferta aplicada a ${formatARS(suggested)}.`, 'success');
-      }
-      render();
-    };
-
-    window.__vendorAskDeleteProduct = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      openConfirmModal(
-        'Borrar producto',
-        `¿Seguro que querés borrar "${prod.nombre}"?`,
-        () => {
-          db.productos = db.productos.filter(p => p.id !== productId);
-          db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
-          saveState(db);
-          syncProductToSheet({ id: productId }, 'delete');
-          showToast('Producto borrado.', 'info');
-          render();
-        }
-      );
-    };
-
-    window.__vendorMoveProduct = function (productId, delta) {
-      const idx = db.productos.findIndex(p => p.id === productId);
-      if (idx === -1) return;
-      const target = idx + delta;
-      if (target < 0 || target >= db.productos.length) return;
-      const [item] = db.productos.splice(idx, 1);
-      db.productos.splice(target, 0, item);
-      saveState(db);
-      render();
-    };
-
-    window.__vendorUploadProductPhotos = async function (event) {
-      if (!ui.productFormDraft) return;
-      const files = Array.from(event.target.files || []);
-      if (files.length === 0) return;
-
-      const current = Array.isArray(ui.productFormDraft.fotos) ? [...ui.productFormDraft.fotos] : [];
-      for (const file of files) {
-        if (current.length >= 3) break;
-        try {
-          const dataUrl = await readImageFileAsDataUrl(file);
-          current.push(dataUrl);
-        } catch (_) {}
-      }
-      ui.productFormDraft.fotos = current.slice(0, 3);
-      showToast('Foto(s) cargada(s) desde galería.', 'success');
-      render();
-    };
-
-    window.__vendorRemoveProductPhoto = function (index) {
-      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
-      ui.productFormDraft.fotos.splice(index, 1);
-      if (ui.productFormDraft.fotos.length === 0) {
-        ui.productFormDraft.fotos = [SAMPLE_FALLBACK_PHOTO];
-      }
-      render();
-    };
-
-    window.__vendorMoveProductPhoto = function (index, delta) {
-      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
-      const arr = [...ui.productFormDraft.fotos];
-      const target = index + delta;
-      if (target < 0 || target >= arr.length) return;
-      const [moved] = arr.splice(index, 1);
-      arr.splice(target, 0, moved);
-      ui.productFormDraft.fotos = arr;
-      render();
-    };
-
-    window.__vendorSetOrderStatus = function (orderId, newStatus) {
-      const ord = db.pedidos.find(o => o.id === orderId);
-      if (!ord) return;
-      ord.estado = newStatus;
-      ord.esNuevoNoVisto = false;
-      saveState(db);
-      syncOrderToSheet(ord);
-      showToast(`Pedido ${orderId} marcado como "${newStatus}".`, 'success');
-      render();
-    };
-
-    window.__vendorMarkAllOrdersSeen = function (storeId) {
-      db.pedidos.forEach(o => {
-        if (o.tiendaId === storeId) {
-          o.esNuevoNoVisto = false;
-        }
-      });
-      saveState(db);
-      showToast('Pedidos marcados como vistos.', 'info');
-      render();
-    };
+          <div class="border-t border-white/10 py-4 px-4 text-center text-xs text-white/60">
+            © ${new Date().getFullYear()} Mercado Tres Arroyos · Comprá local en Tres Arroyos.
+          </div>
+        </footer>
+      `;
+    }
 
     function bindDynamicEvents() {
-      const checkoutForm = document.getElementById('cart-checkout-form');
-      if (checkoutForm) {
-        checkoutForm.addEventListener('submit', (e) => {
+      const cartForm = document.getElementById('cart-checkout-form');
+      if (cartForm) {
+        cartForm.addEventListener('submit', (e) => {
           e.preventDefault();
-          const name = document.getElementById('cart-customer-name').value.trim();
-          const barrio = document.getElementById('cart-customer-barrio').value;
-          const address = document.getElementById('cart-customer-address').value.trim();
-          const note = document.getElementById('cart-customer-note').value.trim();
+          if (db.carrito.length === 0) return;
 
-          if (!name || !address) {
+          const cliente = String(document.getElementById('cart-customer-name').value || '').trim();
+          const barrio = String(document.getElementById('cart-customer-barrio').value || 'Centro').trim();
+          const direccion = String(document.getElementById('cart-customer-address').value || '').trim();
+          const nota = String(document.getElementById('cart-customer-note').value || '').trim();
+
+          if (!cliente || !direccion) {
             showToast('Completá tu nombre y dirección para enviar el pedido.', 'error');
             return;
           }
 
           const byStore = new Map();
-          db.carrito.forEach(it => {
-            if (!byStore.has(it.tiendaId)) byStore.set(it.tiendaId, []);
-            byStore.get(it.tiendaId).push(it);
+          db.carrito.forEach(item => {
+            if (!byStore.has(item.tiendaId)) byStore.set(item.tiendaId, []);
+            byStore.get(item.tiendaId).push(item);
           });
 
-          let firstWaPhone = SUPPORT_WHATSAPP;
-          let firstWaMsg = '';
+          const firstEntry = Array.from(byStore.entries())[0];
+          const [targetStoreId, targetItems] = firstEntry;
+          const targetStore = getStoreById(targetStoreId) || { nombre: 'Tienda', whatsapp: SUPPORT_WHATSAPP, haceEnvios: true, precioEnvio: 1500 };
 
-          byStore.forEach((items, storeId) => {
-            const st = getStoreById(storeId) || { nombre: 'Tienda', whatsapp: SUPPORT_WHATSAPP, haceEnvios: true, precioEnvio: 1500 };
-            const sub = items.reduce((s, i) => s + i.precio * i.cantidad, 0);
-            const ship = st.haceEnvios ? ((st.envioGratisDesde && sub >= st.envioGratisDesde) ? 0 : (Number(st.precioEnvio) || 0)) : 0;
-            const total = sub + ship;
-            const lines = items.map(i => `• ${i.cantidad}x ${i.nombre} (${formatARS(i.precio * i.cantidad)})`).join('\n');
+          const sub = targetItems.reduce((s, i) => s + i.precio * i.cantidad, 0);
+          const ship = targetStore.haceEnvios
+            ? ((targetStore.envioGratisDesde && sub >= targetStore.envioGratisDesde) ? 0 : (Number(targetStore.precioEnvio) || 0))
+            : 0;
+          const total = sub + ship;
 
-            const orderObj = {
-              id: 'PED-' + Math.floor(1000 + Math.random() * 9000),
-              tiendaId: st.id,
-              tiendaNombre: st.nombre,
-              cliente: name,
-              barrio,
-              direccion: address,
-              nota: note,
-              fecha: 'Hoy ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
-              estado: 'Nuevo',
-              esNuevoNoVisto: true,
-              total,
-              items: items.map(i => ({ ...i }))
-            };
+          const lines = targetItems.map(i => `• ${i.cantidad}x ${i.nombre} (${formatARS(i.precio * i.cantidad)})`).join('\n');
+          const msg = `Hola ${targetStore.nombre}, quiero hacer este pedido desde Mercado Tres Arroyos:\n\n${lines}\n\nSubtotal: ${formatARS(sub)}\nEnvío: ${formatARS(ship)}\nTotal: ${formatARS(total)}\n\nNombre: ${cliente}\nBarrio: ${barrio}\nDirección: ${direccion}${nota ? `\nNota: ${nota}` : ''}`;
 
-            db.pedidos.unshift(orderObj);
-            db.misPedidosCliente.unshift({
-              id: orderObj.id,
-              tiendaId: st.id,
-              tiendaNombre: st.nombre,
-              total,
-              resumenItems: items.map(i => `${i.cantidad}x ${i.nombre}`).join(', '),
-              items: items.map(i => ({ productoId: i.productoId, cantidad: i.cantidad }))
-            });
+          const newOrder = {
+            id: 'PED-' + Math.floor(1000 + Math.random() * 9000),
+            tiendaId: targetStore.id,
+            tiendaNombre: targetStore.nombre,
+            cliente,
+            barrio,
+            direccion,
+            nota,
+            fecha: 'Hoy ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+            estado: 'Nuevo',
+            esNuevoNoVisto: true,
+            total,
+            items: targetItems.map(i => ({
+              productoId: i.productoId,
+              nombre: i.nombre,
+              cantidad: i.cantidad,
+              precioUnitario: i.precio,
+              foto: i.foto
+            }))
+          };
 
-            syncOrderToSheet(orderObj);
-
-            const msg = `Hola ${st.nombre}, quiero hacer este pedido desde Mercado Tres Arroyos:\n\n${lines}\n\nSubtotal: ${formatARS(sub)}\nEnvío: ${formatARS(ship)}\n*Total: ${formatARS(total)}*\n\nNombre: ${name}\nBarrio: ${barrio}\nDirección: ${address}${note ? `\nNota: ${note}` : ''}`;
-            if (!firstWaMsg) {
-              firstWaPhone = st.whatsapp;
-              firstWaMsg = msg;
-            }
+          db.pedidos.unshift(newOrder);
+          db.misPedidosCliente.unshift({
+            id: newOrder.id,
+            tiendaId: targetStore.id,
+            tiendaNombre: targetStore.nombre,
+            total,
+            resumenItems: targetItems.map(i => `${i.cantidad}x ${i.nombre}`).join(', '),
+            items: newOrder.items
           });
 
           db.carrito = [];
           ui.cartOpen = false;
           saveState(db);
-          showToast('¡Pedido registrado! Abriendo WhatsApp...', 'success');
+          syncOrderToSheet(newOrder);
+          openWhatsAppUrl(targetStore.whatsapp, msg);
           render();
-
-          if (firstWaMsg) {
-            openWhatsAppUrl(firstWaPhone, firstWaMsg);
-          }
         });
       }
 
-      const s1 = document.getElementById('reg-step-1-form');
-      if (s1) {
-        s1.addEventListener('submit', (e) => {
+      const s1Form = document.getElementById('reg-step-1-form');
+      if (s1Form) {
+        s1Form.addEventListener('submit', (e) => {
           e.preventDefault();
           if (!ui.regDraft.nombre.trim() || !ui.regDraft.whatsapp.trim() || !ui.regDraft.email.trim() || !ui.regDraft.password.trim()) {
-            showToast('Completá nombre, WhatsApp, email y contraseña.', 'error');
+            showToast('Completá todos los campos obligatorios del Paso 1.', 'error');
             return;
           }
           ui.regStep = 2;
@@ -4680,45 +4440,46 @@
         });
       }
 
-      const s2 = document.getElementById('reg-step-2-form');
-      if (s2) {
-        s2.addEventListener('submit', (e) => {
+      const s2Form = document.getElementById('reg-step-2-form');
+      if (s2Form) {
+        s2Form.addEventListener('submit', (e) => {
           e.preventDefault();
           ui.regStep = 3;
           render();
         });
       }
 
-      const s3 = document.getElementById('reg-step-3-form');
-      if (s3) {
-        s3.addEventListener('submit', (e) => {
+      const s3Form = document.getElementById('reg-step-3-form');
+      if (s3Form) {
+        s3Form.addEventListener('submit', (e) => {
           e.preventDefault();
           const d = ui.regDraft;
           if (!d.prodNombre.trim() || !(Number(d.prodPrecio) > 0)) {
-            showToast('Completá el nombre y el precio del primer producto.', 'error');
+            showToast('Completá el nombre y precio de tu primer producto.', 'error');
             return;
           }
 
-          const newStoreId = 'tienda-' + Date.now();
-          const newSlug = slugify(d.nombre);
-          const uniqueSlug = db.tiendas.some(t => t.slug === newSlug) ? `${newSlug}-${Math.floor(10 + Math.random() * 89)}` : newSlug;
-          const todayISO = new Date().toISOString().split('T')[0];
+          const storeId = 'tienda-' + Date.now();
+          const storeName = d.nombre.trim().toUpperCase();
+          const baseSlug = slugify(storeName);
+          const uniqueSlug = db.tiendas.some(t => t.slug === baseSlug) ? `${baseSlug}-${Math.floor(10 + Math.random() * 89)}` : baseSlug;
 
           const newStore = {
-            id: newStoreId,
+            id: storeId,
             slug: uniqueSlug,
-            nombre: d.nombre.trim().toUpperCase(),
+            nombre: storeName,
             dueno: d.nombre.trim(),
             email: d.email.trim().toLowerCase(),
             password: d.password.trim(),
-            rubro: d.rubro,
-            barrio: d.barrio,
-            direccion: `${d.barrio}, Tres Arroyos`,
-            whatsapp: d.whatsapp.trim(),
+            esPlantillaDemo: false,
+            rubro: d.rubro || 'Otros',
+            barrio: d.barrio || 'Centro',
+            direccion: d.barrio || 'Centro',
+            whatsapp: normalizeWhatsAppPhone(d.whatsapp),
             instagram: '',
-            logo: d.logo || makeSvgFallbackDataUri(d.nombre.trim(), '#1A2A44'),
-            portada: d.portada || makeSvgFallbackDataUri(d.nombre.trim(), '#2E7D32'),
-            descripcion: d.descripcion.trim() || `Emprendimiento local de ${d.rubro} en ${d.barrio}, Tres Arroyos.`,
+            logo: d.logo || makeSvgFallbackDataUri(storeName, '#1A2A44'),
+            portada: d.portada || makeSvgFallbackDataUri(storeName, '#2E7D32'),
+            descripcion: d.descripcion.trim() || `Tienda de ${storeName} en Tres Arroyos.`,
             antiguedadTexto: 'Nueva tienda en Tres Arroyos',
             rating: 5.0,
             reviewCount: 0,
@@ -4726,35 +4487,35 @@
             salesCount: 1,
             verificado: false,
             abiertoAhora: true,
-            horarioTexto: d.horarioTexto.trim() || 'Lun a Sáb 9 a 20',
+            horarioTexto: d.horarioTexto || 'Lun a Sáb 9 a 20',
             haceEnvios: Boolean(d.haceEnvios),
             envioHoy: Boolean(d.haceEnvios),
             precioEnvio: Number(d.precioEnvio) || 1500,
-            envioGratisDesde: 25000,
+            envioGratisDesde: 0,
             aceptaEncargo: false,
             metodosPago: ['Efectivo', 'Transferencia'],
             estadoSuscripcion: 'ACTIVA',
-            fechaRegistro: todayISO,
+            fechaRegistro: new Date().toISOString().split('T')[0],
             horariosSemana: makeDefaultHours('09:00', '20:00', false)
           };
 
           const firstProd = {
             id: 'prod-' + Date.now(),
-            tiendaId: newStoreId,
+            tiendaId: storeId,
             nombre: d.prodNombre.trim(),
             precio: Number(d.prodPrecio),
             precioOferta: null,
             esNuevo: true,
             stockDisponible: true,
-            cantidadStock: 5,
-            categoria: d.rubro,
-            descripcion: `Producto de ${newStore.nombre} en Tres Arroyos.`,
+            cantidadStock: 10,
+            categoria: d.rubro || 'Otros',
+            descripcion: 'Primer producto publicado en Mercado Tres Arroyos.',
             fotos: [d.prodFoto || makeSvgFallbackDataUri(d.prodNombre.trim(), '#1A2A44')]
           };
 
           db.tiendas.unshift(newStore);
           db.productos.unshift(firstProd);
-          ui.session = { role: 'VENDOR', storeId: newStoreId };
+          ui.session = { role: 'VENDOR', storeId: storeId };
           ui.regStep = 1;
           ui.regDraft = {
             nombre: '',
@@ -4777,8 +4538,8 @@
           saveState(db);
           syncStoreToSheet(newStore);
           syncProductToSheet(firstProd);
-          showToast('¡Tu tienda ya está publicada!', 'success');
-          navigate('TIENDA_PERFIL', { storeSlug: newStore.slug });
+          showToast(`¡Tu tienda "${storeName}" ya está publicada!`, 'success');
+          navigate('TIENDA_PERFIL', { storeSlug: uniqueSlug });
         });
       }
 
@@ -4786,16 +4547,31 @@
       if (vendorStoreForm) {
         vendorStoreForm.addEventListener('submit', (e) => {
           e.preventDefault();
-          const currentStore = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID);
-          if (!currentStore) return;
+          const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID) || db.tiendas[0];
+          if (!store) return;
+
+          const newName = String(document.getElementById('v-store-name').value || '').trim().toUpperCase();
+          const newRubro = document.getElementById('v-store-rubro').value;
+          const newEmail = String(document.getElementById('v-store-email').value || '').trim().toLowerCase();
+          const newPass = String(document.getElementById('v-store-password').value || '').trim();
+          const newDesc = String(document.getElementById('v-store-desc').value || '').trim();
+          const newBarrio = document.getElementById('v-store-barrio').value;
+          const newDir = String(document.getElementById('v-store-dir').value || '').trim();
+          const newWa = String(document.getElementById('v-store-wa').value || '').trim();
+          const newIg = String(document.getElementById('v-store-ig').value || '').trim();
+          const newHoursText = String(document.getElementById('v-store-hours-text').value || '').trim();
+          const newShip = document.getElementById('v-store-shipping').checked;
+          const newShipPrice = Number(document.getElementById('v-store-ship-price').value) || 0;
+          const newShipFree = Number(document.getElementById('v-store-ship-free').value) || 0;
+          const newEncargo = document.getElementById('v-store-encargo').checked;
 
           const daysList = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-          const newHours = {};
+          const updatedHours = {};
           daysList.forEach(d => {
             const openEl = document.querySelector(`[data-day-open="${d}"]`);
             const startEl = document.querySelector(`[data-day-start="${d}"]`);
             const endEl = document.querySelector(`[data-day-end="${d}"]`);
-            newHours[d] = {
+            updatedHours[d] = {
               abierto: openEl ? openEl.checked : true,
               apertura: startEl ? startEl.value : '09:00',
               cierre: endEl ? endEl.value : '20:00'
@@ -4803,189 +4579,386 @@
           });
 
           const payMethods = [];
-          document.querySelectorAll('[data-pay-method]').forEach(cb => {
-            if (cb.checked) payMethods.push(cb.getAttribute('data-pay-method'));
+          document.querySelectorAll('[data-pay-method]').forEach(chk => {
+            if (chk.checked) payMethods.push(chk.getAttribute('data-pay-method'));
           });
 
-          const updatedFields = {
-            nombre: document.getElementById('v-store-name').value.trim().toUpperCase(),
-            rubro: document.getElementById('v-store-rubro').value,
-            email: document.getElementById('v-store-email').value.trim().toLowerCase(),
-            password: document.getElementById('v-store-password').value.trim(),
-            descripcion: document.getElementById('v-store-desc').value.trim(),
-            barrio: document.getElementById('v-store-barrio').value,
-            direccion: document.getElementById('v-store-dir').value.trim(),
-            whatsapp: document.getElementById('v-store-wa').value.trim(),
-            instagram: document.getElementById('v-store-ig').value.trim(),
-            horarioTexto: document.getElementById('v-store-hours-text').value.trim(),
-            haceEnvios: document.getElementById('v-store-shipping').checked,
-            envioHoy: document.getElementById('v-store-shipping').checked,
-            precioEnvio: Number(document.getElementById('v-store-ship-price').value) || 0,
-            envioGratisDesde: Number(document.getElementById('v-store-ship-free').value) || 0,
-            aceptaEncargo: document.getElementById('v-store-encargo').checked,
-            horariosSemana: newHours,
-            metodosPago: payMethods.length > 0 ? payMethods : ['Efectivo', 'Transferencia']
+          const patch = {
+            nombre: newName || store.nombre,
+            rubro: newRubro,
+            email: newEmail || store.email,
+            password: newPass || store.password,
+            descripcion: newDesc,
+            barrio: newBarrio,
+            direccion: newDir,
+            whatsapp: newWa,
+            instagram: newIg,
+            horarioTexto: newHoursText,
+            haceEnvios: newShip,
+            envioHoy: newShip,
+            precioEnvio: newShipPrice,
+            envioGratisDesde: newShipFree,
+            aceptaEncargo: newEncargo,
+            horariosSemana: updatedHours,
+            metodosPago: payMethods.length > 0 ? payMethods : ['Efectivo']
           };
 
-          if (isTemplateStore(currentStore)) {
-            const mat = materializeOwnStoreFromTemplate(currentStore, updatedFields);
-            if (mat.cloned) {
-              showToast(`¡Listo! Guardamos "${mat.store.nombre}" como tu tienda propia. La plantilla guía quedó intacta.`, 'success');
+          if (isTemplateStore(store)) {
+            const res = materializeOwnStoreFromTemplate(store, patch);
+            if (res.cloned) {
+              showToast(`¡Listo! Se creó tu tienda propia "${res.store.nombre}" y la plantilla original sigue intacta.`, 'success');
               render();
               return;
             }
           }
 
-          Object.assign(currentStore, updatedFields);
+          Object.assign(store, patch);
           saveState(db);
-          syncStoreToSheet(currentStore);
-          showToast('Cambios de la tienda guardados.', 'success');
+          syncStoreToSheet(store);
+          showToast('Cambios guardados en tu tienda.', 'success');
           render();
         });
       }
 
       const vendorProdForm = document.getElementById('vendor-product-form');
-      if (vendorProdForm && ui.productFormDraft) {
+      if (vendorProdForm) {
         vendorProdForm.addEventListener('submit', (e) => {
           e.preventDefault();
+          const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID) || db.tiendas[0];
           const draft = ui.productFormDraft;
-          const nameVal = document.getElementById('prod-name-input').value.trim();
-          const priceVal = Number(document.getElementById('prod-price-input').value) || 0;
-          const offerRaw = document.getElementById('prod-offer-input').value;
-          const offerVal = offerRaw ? Number(offerRaw) : null;
+          if (!store || !draft) return;
 
-          if (!nameVal || priceVal <= 0) {
-            showToast('Ingresá un nombre y un precio válido.', 'error');
+          const nameInput = document.getElementById('prod-name-input');
+          const priceInput = document.getElementById('prod-price-input');
+          const offerInput = document.getElementById('prod-offer-input');
+          if (nameInput) draft.nombre = nameInput.value;
+          if (priceInput) draft.precio = Number(priceInput.value) || 0;
+          if (offerInput) draft.precioOferta = offerInput.value ? Number(offerInput.value) : null;
+
+          const cleanName = String(draft.nombre || '').trim();
+          const cleanPrice = Number(draft.precio) || 0;
+          if (!cleanName || cleanPrice <= 0) {
+            showToast('Completá el nombre y un precio válido.', 'error');
             return;
           }
 
-          const finalOffer = (offerVal && offerVal > 0 && offerVal < priceVal) ? offerVal : null;
-          const photos = (Array.isArray(draft.fotos) && draft.fotos.length > 0)
-            ? draft.fotos.slice(0, 3)
-            : [makeSvgFallbackDataUri(nameVal, '#1A2A44')];
+          const cleanOffer = draft.precioOferta && Number(draft.precioOferta) > 0 && Number(draft.precioOferta) < cleanPrice
+            ? Number(draft.precioOferta)
+            : null;
 
-          if (draft.id) {
-            const idx = db.productos.findIndex(p => p.id === draft.id);
-            if (idx !== -1) {
-              const updatedProd = {
-                ...db.productos[idx],
-                ...draft,
-                nombre: nameVal,
-                precio: priceVal,
-                precioOferta: finalOffer,
-                fotos: photos
-              };
-              db.productos[idx] = updatedProd;
+          const prodId = draft.id || ('prod-' + Date.now());
+          const prodObj = {
+            id: prodId,
+            tiendaId: store.id,
+            nombre: cleanName,
+            precio: cleanPrice,
+            precioOferta: cleanOffer,
+            esNuevo: Boolean(draft.esNuevo),
+            stockDisponible: draft.stockDisponible !== false,
+            cantidadStock: draft.cantidadStock !== null && draft.cantidadStock !== undefined && draft.cantidadStock !== '' ? Number(draft.cantidadStock) : null,
+            categoria: draft.categoria || store.rubro || 'Otros',
+            descripcion: String(draft.descripcion || '').trim(),
+            fotos: (Array.isArray(draft.fotos) && draft.fotos.length > 0) ? draft.fotos.slice(0, 3) : [makeSvgFallbackDataUri(cleanName, '#1A2A44')]
+          };
 
-              db.ofertas = db.ofertas.filter(o => o.productoId !== updatedProd.id);
-              let syncedOffer = null;
-              if (finalOffer) {
-                syncedOffer = {
-                  id: 'of-' + Date.now(),
-                  productoId: updatedProd.id,
-                  tiendaId: updatedProd.tiendaId,
-                  precioOferta: finalOffer,
-                  hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
-                  destacada: false
-                };
-                db.ofertas.push(syncedOffer);
-              }
-
-              saveState(db);
-              syncProductToSheet(updatedProd);
-              if (syncedOffer) syncOfferToSheet(syncedOffer);
-              showToast('Producto actualizado.', 'success');
-            }
+          const existingIdx = db.productos.findIndex(p => p.id === prodId);
+          if (existingIdx >= 0) {
+            db.productos[existingIdx] = prodObj;
           } else {
-            const newProd = {
-              id: 'prod-' + Date.now(),
-              tiendaId: draft.tiendaId,
-              nombre: nameVal,
-              precio: priceVal,
-              precioOferta: finalOffer,
-              esNuevo: Boolean(draft.esNuevo),
-              stockDisponible: draft.stockDisponible !== false,
-              cantidadStock: draft.cantidadStock ?? null,
-              categoria: draft.categoria || 'Otros',
-              descripcion: draft.descripcion || '',
-              fotos: photos
-            };
-            db.productos.unshift(newProd);
+            db.productos.unshift(prodObj);
+          }
 
-            let syncedOffer = null;
-            if (finalOffer) {
-              syncedOffer = {
-                id: 'of-' + Date.now(),
-                productoId: newProd.id,
-                tiendaId: newProd.tiendaId,
-                precioOferta: finalOffer,
-                hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
-                destacada: false
-              };
-              db.ofertas.push(syncedOffer);
-            }
+          const offerObj = {
+            id: 'of-' + prodId,
+            productoId: prodId,
+            tiendaId: store.id,
+            precioOferta: cleanOffer || 0,
+            hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+            destacada: false
+          };
 
-            saveState(db);
-            syncProductToSheet(newProd);
-            if (syncedOffer) syncOfferToSheet(syncedOffer);
-            showToast('¡Producto publicado!', 'success');
+          if (cleanOffer) {
+            const offIdx = db.ofertas.findIndex(o => o.productoId === prodId);
+            if (offIdx >= 0) db.ofertas[offIdx] = offerObj;
+            else db.ofertas.unshift(offerObj);
+            syncOfferToSheet(offerObj, 'upsert');
+          } else {
+            const prevOffer = db.ofertas.find(o => o.productoId === prodId);
+            db.ofertas = db.ofertas.filter(o => o.productoId !== prodId);
+            if (prevOffer) syncOfferToSheet(prevOffer, 'delete');
           }
 
           ui.showProductForm = false;
           ui.productFormDraft = null;
+          saveState(db);
+          syncProductToSheet(prodObj);
+          showToast('Producto guardado correctamente.', 'success');
           render();
         });
       }
     }
 
-    function render() {
+    window.__openDemoTemplateAsVendor = function () {
       ensureDemoTemplateExists();
+      ui.session = { role: 'VENDOR', storeId: DEMO_TEMPLATE_ID };
+      ui.vendorTab = 'MI_TIENDA';
+      saveState(db);
+      showToast('Abriste la plantilla guía. Podés editarla o cambiar email y contraseña para hacerla tu tienda.', 'info');
+      navigate('PANEL_TIENDA', {},);
+    };
+
+    window.__vendorToggleOpen = function (storeId) {
+      const store = getStoreById(storeId);
+      if (!store) return;
+      store.abiertoAhora = !store.abiertoAhora;
+      saveState(db);
+      syncStoreToSheet(store);
+      showToast(store.abiertoAhora ? 'Tu tienda ahora figura ABIERTA.' : 'Tu tienda ahora figura CERRADA.', 'info');
+      render();
+    };
+
+    window.__vendorUploadStoreMedia = async function (event, field) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID) || db.tiendas[0];
+      if (!store) return;
+      try {
+        const dataUrl = await readImageFileAsDataUrl(file);
+        store[field] = dataUrl;
+        saveState(db);
+        syncStoreToSheet(store);
+        showToast(field === 'logo' ? 'Logo actualizado desde tu galería.' : 'Portada actualizada desde tu galería.', 'success');
+        render();
+      } catch (err) {
+        showToast(err.message || 'No se pudo cargar la imagen.', 'error');
+      }
+    };
+
+    window.__vendorClearStoreMedia = function (field) {
+      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID) || db.tiendas[0];
+      if (!store) return;
+      store[field] = field === 'logo' ? makeSvgFallbackDataUri(store.nombre, '#1A2A44') : makeSvgFallbackDataUri(store.nombre, '#2E7D32');
+      saveState(db);
+      syncStoreToSheet(store);
+      showToast('Imagen restablecida.', 'info');
+      render();
+    };
+
+    window.__vendorCopyFirstDayHours = function () {
+      const firstStart = document.querySelector('[data-day-start="Lunes"]');
+      const firstEnd = document.querySelector('[data-day-end="Lunes"]');
+      const sVal = firstStart ? firstStart.value : '09:00';
+      const eVal = firstEnd ? firstEnd.value : '20:00';
+      document.querySelectorAll('[data-day-start]').forEach(el => { el.value = sVal; });
+      document.querySelectorAll('[data-day-end]').forEach(el => { el.value = eVal; });
+      showToast(`Horario ${sVal} a ${eVal} copiado a todos los días.`, 'info');
+    };
+
+    window.__vendorOpenNewProductForm = function (storeId) {
+      const store = getStoreById(storeId) || getStoreById(DEMO_TEMPLATE_ID) || db.tiendas[0];
+      ui.showProductForm = true;
+      ui.productFormDraft = {
+        id: null,
+        tiendaId: store.id,
+        nombre: '',
+        precio: 10000,
+        precioOferta: null,
+        esNuevo: true,
+        stockDisponible: true,
+        cantidadStock: 10,
+        categoria: store.rubro || 'Otros',
+        descripcion: '',
+        fotos: [makeSvgFallbackDataUri(store.nombre, '#1A2A44')]
+      };
+      render();
+    };
+
+    window.__vendorEditProduct = function (productId) {
+      const prod = db.productos.find(p => p.id === productId);
+      if (!prod) return;
+      ui.showProductForm = true;
+      ui.productFormDraft = {
+        ...prod,
+        fotos: Array.isArray(prod.fotos) ? [...prod.fotos] : []
+      };
+      render();
+    };
+
+    window.__vendorUploadProductPhotos = async function (event) {
+      const files = Array.from(event.target.files || []);
+      if (files.length === 0 || !ui.productFormDraft) return;
+      const current = Array.isArray(ui.productFormDraft.fotos) ? [...ui.productFormDraft.fotos] : [];
+      for (const f of files) {
+        if (current.length >= 3) break;
+        try {
+          const dataUrl = await readImageFileAsDataUrl(f);
+          current.push(dataUrl);
+        } catch (_) {}
+      }
+      ui.productFormDraft.fotos = current.slice(0, 3);
+      showToast('Fotos cargadas desde tu galería.', 'success');
+      render();
+    };
+
+    window.__vendorMoveProductPhoto = function (index, delta) {
+      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
+      const arr = ui.productFormDraft.fotos;
+      const target = index + delta;
+      if (target < 0 || target >= arr.length) return;
+      const temp = arr[index];
+      arr[index] = arr[target];
+      arr[target] = temp;
+      render();
+    };
+
+    window.__vendorRemoveProductPhoto = function (index) {
+      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
+      ui.productFormDraft.fotos.splice(index, 1);
+      render();
+    };
+
+    window.__vendorToggleProductOffer = function (productId) {
+      const prod = db.productos.find(p => p.id === productId);
+      if (!prod) return;
+      const pricing = getEffectivePrice(prod);
+      if (pricing.hasOffer) {
+        prod.precioOferta = null;
+        const removedOffer = db.ofertas.find(o => o.productoId === productId);
+        db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
+        saveState(db);
+        syncProductToSheet(prod);
+        if (removedOffer) syncOfferToSheet(removedOffer, 'delete');
+        showToast('Oferta quitada del producto.', 'info');
+      } else {
+        const discounted = Math.max(100, Math.round(prod.precio * 0.8));
+        prod.precioOferta = discounted;
+        const offerRecord = {
+          id: 'of-' + productId,
+          productoId: productId,
+          tiendaId: prod.tiendaId,
+          precioOferta: discounted,
+          hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+          destacada: false
+        };
+        db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
+        db.ofertas.unshift(offerRecord);
+        saveState(db);
+        syncProductToSheet(prod);
+        syncOfferToSheet(offerRecord, 'upsert');
+        showToast(`Oferta activada a ${formatARS(discounted)}.`, 'success');
+      }
+      render();
+    };
+
+    window.__vendorDuplicateProduct = function (productId) {
+      const prod = db.productos.find(p => p.id === productId);
+      if (!prod) return;
+      const copy = {
+        ...prod,
+        id: 'prod-' + Date.now(),
+        nombre: prod.nombre + ' (copia)',
+        fotos: Array.isArray(prod.fotos) ? [...prod.fotos] : [SAMPLE_FALLBACK_PHOTO]
+      };
+      db.productos.unshift(copy);
+      saveState(db);
+      syncProductToSheet(copy);
+      showToast('Producto duplicado.', 'success');
+      render();
+    };
+
+    window.__vendorMoveProduct = function (productId, delta) {
+      const idx = db.productos.findIndex(p => p.id === productId);
+      if (idx === -1) return;
+      const target = idx + delta;
+      if (target < 0 || target >= db.productos.length) return;
+      const temp = db.productos[idx];
+      db.productos[idx] = db.productos[target];
+      db.productos[target] = temp;
+      saveState(db);
+      render();
+    };
+
+    window.__vendorAskDeleteProduct = function (productId) {
+      const prod = db.productos.find(p => p.id === productId);
+      if (!prod) return;
+      openModal(`
+        <div class="p-5 sm:p-6">
+          <h2 class="font-extrabold text-lg text-[#1A2A44]">¿Borrar producto?</h2>
+          <p class="text-sm text-[#666666] mt-2">Vas a eliminar <strong>${escapeHtml(prod.nombre)}</strong> de tu catálogo.</p>
+          <div class="mt-5 flex items-center gap-3">
+            <button type="button" onclick="window.__vendorConfirmDeleteProduct('${prod.id}')" class="min-h-[46px] px-5 py-2.5 rounded-xl bg-[#E53935] text-white font-extrabold text-sm">
+              Sí, borrar
+            </button>
+            <button type="button" onclick="closeModal()" class="min-h-[46px] px-5 py-2.5 rounded-xl bg-slate-100 text-[#111111] font-bold text-sm">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      `);
+    };
+
+    window.__vendorConfirmDeleteProduct = function (productId) {
+      const removedOffer = db.ofertas.find(o => o.productoId === productId);
+      db.productos = db.productos.filter(p => p.id !== productId);
+      db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
+      closeModal();
+      saveState(db);
+      syncProductToSheet({ id: productId }, 'delete');
+      if (removedOffer) syncOfferToSheet(removedOffer, 'delete');
+      showToast('Producto eliminado.', 'info');
+      render();
+    };
+
+    window.__vendorSetOrderStatus = function (orderId, newStatus) {
+      const ord = db.pedidos.find(o => o.id === orderId);
+      if (!ord) return;
+      ord.estado = newStatus;
+      ord.esNuevoNoVisto = false;
+      saveState(db);
+      syncOrderToSheet(ord);
+      showToast(`Pedido #${orderId} marcado como ${newStatus}.`, 'success');
+      render();
+    };
+
+    window.__vendorContactOrderClient = function (orderId) {
+      const ord = db.pedidos.find(o => o.id === orderId);
+      if (!ord) return;
+      const store = getStoreById(ord.tiendaId);
+      const msg = `Hola ${ord.cliente}, te escribimos de ${store ? store.nombre : 'la tienda'} por tu pedido #${ord.id} (${formatARS(ord.total)}).`;
+      openWhatsAppUrl(store ? store.whatsapp : SUPPORT_WHATSAPP, msg);
+    };
+
+    function render() {
       const appEl = document.getElementById('app');
       if (!appEl) return;
 
-      let pageContent = '';
-      if (ui.route === 'INICIO') {
-        pageContent = renderHome();
-      } else if (ui.route === 'TIENDAS') {
-        pageContent = renderStoresDirectory();
+      ensureDemoTemplateExists();
+
+      let pageHtml = '';
+      if (ui.route === 'TIENDAS') {
+        pageHtml = renderStoresDirectory();
       } else if (ui.route === 'OFERTAS') {
-        pageContent = renderOffersPage();
+        pageHtml = renderOffersPage();
       } else if (ui.route === 'QUIERO_VENDER') {
-        pageContent = renderRegisterStoreWizard();
+        pageHtml = renderRegisterStoreWizard();
       } else if (ui.route === 'TIENDA_PERFIL') {
-        pageContent = renderStoreProfile();
+        pageHtml = renderStoreProfile();
       } else if (ui.route === 'PANEL_TIENDA') {
-        pageContent = renderVendorPanel();
+        pageHtml = renderVendorPanel();
       } else {
-        pageContent = renderHome();
+        pageHtml = renderHome();
       }
 
       appEl.innerHTML = `
         ${renderHeader()}
-        ${pageContent}
-        ${renderFloatingCartButton()}
+        ${pageHtml}
         ${renderFooter()}
+        ${renderFloatingCartButton()}
         ${renderCartDrawer()}
       `;
 
       bindDynamicEvents();
     }
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closeModal();
-        if (ui.cartOpen) {
-          ui.cartOpen = false;
-          render();
-        }
-      }
-    });
-
-    document.getElementById('modal-container').addEventListener('click', (e) => {
-      if (e.target.id === 'modal-container') {
-        closeModal();
-      }
-    });
 
     render();
     fetchSheetDataOnLoad(false);
