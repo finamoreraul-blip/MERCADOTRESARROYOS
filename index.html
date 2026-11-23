@@ -4159,19 +4159,16 @@
             tiendaId: store.id,
             cliente,
             avatar: makeSvgFallbackDataUri(cliente, '#1A2A44'),
-            fecha: 'Recién',
+            fecha: 'Hoy',
             estrellas,
             comentario,
             fotoProducto
           };
-
           db.resenas.unshift(newRev);
           store.reviewCount = (store.reviewCount || 0) + 1;
           if (estrellas === 5) store.fiveStarCount = (store.fiveStarCount || 0) + 1;
-
           saveState(db);
           syncReviewToSheet(newRev);
-          syncStoreToSheet(store);
           closeModal();
           showToast('¡Gracias por tu reseña!', 'success');
           render();
@@ -4186,23 +4183,21 @@
       openModal(`
         <div class="p-5 sm:p-6">
           <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-            <h2 class="font-extrabold text-lg text-[#1A2A44]">Reportar tienda</h2>
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">Reportar ${escapeHtml(store.nombre)}</h2>
             <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
           </div>
           <form id="report-store-form" class="mt-4 space-y-4">
-            <p class="text-xs text-[#666666]">Tienda: <strong>${escapeHtml(store.nombre)}</strong></p>
             <div>
               <label class="block text-xs font-bold text-[#111111] mb-1">Motivo</label>
-              <select id="rep-reason" class="w-full min-h-[46px] px-3 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
+              <select id="rep-reason" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
                 <option value="Datos desactualizados">Datos desactualizados</option>
-                <option value="No responde por WhatsApp">No responde por WhatsApp</option>
-                <option value="Precios incorrectos">Precios incorrectos</option>
+                <option value="Producto no disponible">Producto no disponible</option>
                 <option value="Otro motivo">Otro motivo</option>
               </select>
             </div>
             <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Detalle (opcional)</label>
-              <textarea id="rep-detail" rows="2" class="w-full p-3 rounded-xl border border-slate-300 text-sm"></textarea>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Detalle *</label>
+              <textarea id="rep-detail" rows="3" required placeholder="Contanos qué ocurrió..." class="w-full p-3 rounded-xl border border-slate-300 text-sm"></textarea>
             </div>
             <button type="submit" class="min-h-[48px] w-full rounded-[12px] bg-[#E53935] text-white font-extrabold text-sm">
               Enviar reporte
@@ -4225,145 +4220,319 @@
       openModal(`
         <div class="p-5 sm:p-6">
           <div class="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div>
-              <h2 class="font-extrabold text-xl text-[#1A2A44]">Ingresar a mi tienda</h2>
-              <p class="text-xs text-[#666666]">Accedé al panel con tu email y contraseña</p>
-            </div>
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">Ingresar a mi tienda</h2>
             <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
           </div>
 
-          <form id="login-form" class="mt-4 space-y-4">
+          <form id="vendor-login-form" class="mt-4 space-y-4">
             <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Email</label>
-              <input id="login-email" type="email" required placeholder="tu@correo.com" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm" />
+              <label class="block text-xs font-bold text-[#111111] mb-1">Email *</label>
+              <input id="login-email" type="email" required placeholder="tienda@tresarroyos.com" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 text-sm" />
             </div>
             <div>
-              <label class="block text-xs font-bold text-[#111111] mb-1">Contraseña</label>
-              <input id="login-pass" type="password" required placeholder="••••••••" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm" />
+              <label class="block text-xs font-bold text-[#111111] mb-1">Contraseña *</label>
+              <input id="login-pass" type="password" required placeholder="••••••" class="w-full min-h-[48px] px-3.5 rounded-xl border border-slate-300 text-sm" />
             </div>
             <button type="submit" class="min-h-[50px] w-full rounded-[12px] bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm">
-              Entrar
+              Ingresar al panel
             </button>
           </form>
 
-          <div class="mt-5 pt-4 border-t border-slate-100 flex flex-col gap-2.5 text-xs">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-[#666666]">¿Querés ver cómo funciona usando una tienda plantilla de guía?</span>
-              <button type="button" onclick="closeModal(); window.__openDemoTemplateAsVendor();" class="font-extrabold text-[#2E7D32] hover:underline shrink-0">
-                Usar plantilla guía
+          <div class="mt-5 pt-4 border-t border-slate-200 space-y-2.5">
+            <div class="text-xs font-bold text-[#666666]">Acceso rápido de demostración (tienda plantilla reutilizable):</div>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" onclick="window.__loginAsDemoStore('${DEMO_TEMPLATE_ID}')" class="min-h-[42px] px-3.5 py-2 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 text-xs font-extrabold text-[#2E7D32] border border-[#25D366]/30">
+                🏪 Plantilla Emprendedor (${DEMO_TEMPLATE_EMAIL})
               </button>
-            </div>
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-[#666666]">¿Todavía no tenés tienda?</span>
-              <button type="button" onclick="closeModal(); navigate('QUIERO_VENDER');" class="font-extrabold text-[#1A2A44] hover:underline shrink-0">
-                Crear mi tienda gratis
+              <button type="button" onclick="window.__loginAsDemoStore('tienda-maru')" class="min-h-[42px] px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-[#1A2A44]">
+                🍰 Tortas de Maru
               </button>
             </div>
           </div>
         </div>
       `);
 
-      const loginForm = document.getElementById('login-form');
-      if (loginForm) {
-        loginForm.addEventListener('submit', async (e) => {
+      const form = document.getElementById('vendor-login-form');
+      if (form) {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
-          const submitBtn = loginForm.querySelector('button[type="submit"]');
-          const emailVal = String(document.getElementById('login-email').value || '').trim().toLowerCase();
-          const passVal = String(document.getElementById('login-pass').value || '').trim();
+          const email = String(document.getElementById('login-email').value || '').trim().toLowerCase();
+          const pass = String(document.getElementById('login-pass').value || '').trim();
 
-          const findStore = () => db.tiendas.find(t => {
-            const tEmail = String(t.email || '').trim().toLowerCase();
-            if (!tEmail || tEmail !== emailVal) return false;
-            const tPass = String(t.password || '').replace(/^'/, '').trim();
-            return !tPass || tPass === passVal;
-          });
-
-          let matchedStore = findStore();
-
-          if (!matchedStore) {
-            if (submitBtn) {
-              submitBtn.disabled = true;
-              submitBtn.textContent = 'Buscando tienda en la nube...';
-            }
+          let st = db.tiendas.find(t => String(t.email || '').trim().toLowerCase() === email && String(t.password || '').trim() === pass);
+          if (!st) {
             await fetchSheetDataOnLoad(false);
-            matchedStore = findStore();
-            if (submitBtn) {
-              submitBtn.disabled = false;
-              submitBtn.textContent = 'Entrar';
-            }
+            st = db.tiendas.find(t => String(t.email || '').trim().toLowerCase() === email && String(t.password || '').trim() === pass);
           }
 
-          if (matchedStore) {
-            ui.session = { role: 'VENDOR', storeId: matchedStore.id };
-            closeModal();
-            showToast(`Bienvenido al panel de ${matchedStore.nombre}.`, 'success');
-            navigate('PANEL_TIENDA');
+          if (!st) {
+            showToast('Email o contraseña incorrectos.', 'error');
             return;
           }
 
-          showToast('Email o contraseña incorrectos.', 'error');
+          ui.session = { role: 'VENDOR', storeId: st.id };
+          closeModal();
+          navigate('PANEL_TIENDA', { vendorTab: 'MI_TIENDA' });
+          showToast(`¡Bienvenido/a, ${st.nombre}!`, 'success');
         });
       }
     }
 
-    function renderFooter() {
-      return `
-        <footer class="bg-[#1A2A44] text-white mt-auto">
-          <div class="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 text-sm">
-            <div>
-              <div class="font-extrabold text-lg tracking-tight">MERCADO TRES ARROYOS</div>
-              <p class="mt-2 text-white/75 text-xs leading-relaxed">
-                Comprá local. Todo Tres Arroyos en un solo lugar. Conectamos vecinos y emprendimientos locales con pedidos rápidos por WhatsApp.
-              </p>
-            </div>
-
-            <div>
-              <div class="font-bold text-sm uppercase tracking-wider text-white/90 mb-3">Compradores</div>
-              <ul class="space-y-2 text-xs text-white/75">
-                <li><button type="button" onclick="navigate('INICIO')" class="hover:text-white">Inicio</button></li>
-                <li><button type="button" onclick="navigate('TIENDAS')" class="hover:text-white">Todas las tiendas</button></li>
-                <li><button type="button" onclick="navigate('OFERTAS')" class="hover:text-white">Ofertas del día</button></li>
-              </ul>
-            </div>
-
-            <div>
-              <div class="font-bold text-sm uppercase tracking-wider text-white/90 mb-3">Emprendedores</div>
-              <ul class="space-y-2 text-xs text-white/75">
-                <li><button type="button" onclick="navigate('QUIERO_VENDER')" class="hover:text-white">Quiero vender</button></li>
-                <li><button type="button" onclick="openLoginModal()" class="hover:text-white">Ingresar a mi tienda</button></li>
-                <li><button type="button" onclick="window.__openDemoTemplateAsVendor()" class="hover:text-white">Plantilla guía</button></li>
-              </ul>
-            </div>
-
-            <div>
-              <div class="font-bold text-sm uppercase tracking-wider text-white/90 mb-3">Contacto</div>
-              <p class="text-xs text-white/75 mb-3">Tres Arroyos, Provincia de Buenos Aires.</p>
-              <button type="button" onclick="openWhatsAppUrl(SUPPORT_WHATSAPP, 'Hola Mercado Tres Arroyos, quiero hacer una consulta.')" class="min-h-[44px] px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#1EB956] text-white font-bold text-xs inline-flex items-center gap-1.5">
-                <span>💬 WhatsApp soporte</span>
-              </button>
-            </div>
+    function openVendorConfirmModal(title, message, onConfirmFn) {
+      openModal(`
+        <div class="p-5 sm:p-6">
+          <h3 class="font-extrabold text-xl text-[#111111]">${escapeHtml(title)}</h3>
+          <p class="mt-2 text-sm text-[#666666]">${escapeHtml(message)}</p>
+          <div class="mt-5 flex items-center justify-end gap-2.5">
+            <button type="button" onclick="closeModal()" class="min-h-[46px] px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold">Cancelar</button>
+            <button type="button" id="confirm-modal-ok-btn" class="min-h-[46px] px-5 py-2 rounded-xl bg-[#E53935] text-white text-xs font-extrabold">Confirmar</button>
           </div>
-
-          <div class="border-t border-white/10 py-4 px-4 text-center text-xs text-white/60">
-            © ${new Date().getFullYear()} Mercado Tres Arroyos · Comprá local en Tres Arroyos.
-          </div>
-        </footer>
-      `;
+        </div>
+      `);
+      const okBtn = document.getElementById('confirm-modal-ok-btn');
+      if (okBtn) {
+        okBtn.addEventListener('click', () => {
+          closeModal();
+          onConfirmFn();
+        });
+      }
     }
 
-    function bindDynamicEvents() {
+    // HANDLERS GLOBALES DEL PANEL Y REGISTRO
+    window.__loginAsDemoStore = (storeId) => {
+      ui.session = { role: 'VENDOR', storeId };
+      closeModal();
+      navigate('PANEL_TIENDA', { vendorTab: 'MI_TIENDA' });
+    };
+
+    window.__openDemoTemplateAsVendor = () => {
+      ensureDemoTemplateExists();
+      ui.session = { role: 'VENDOR', storeId: DEMO_TEMPLATE_ID };
+      navigate('PANEL_TIENDA', { vendorTab: 'MI_TIENDA' });
+      showToast('Ingresaste a la Plantilla Guía. Editá tus datos y guardá con tu email y contraseña.', 'info');
+    };
+
+    window.__vendorToggleOpen = (storeId) => {
+      const st = getStoreById(storeId);
+      if (!st) return;
+      st.abiertoAhora = !st.abiertoAhora;
+      saveState(db);
+      syncStoreToSheet(st);
+      showToast(st.abiertoAhora ? 'Tienda marcada como ABIERTO.' : 'Tienda marcada como CERRADO.', 'info');
+      render();
+    };
+
+    window.__vendorUploadStoreMedia = async (event, field) => {
+      const file = event.target.files && event.target.files[0];
+      if (!file || !ui.session) return;
+      const st = getStoreById(ui.session.storeId);
+      if (!st) return;
+      try {
+        const dataUrl = await readImageFileAsDataUrl(file);
+        st[field] = dataUrl;
+        saveState(db);
+        syncStoreToSheet(st);
+        showToast('Imagen actualizada desde tu galería.', 'success');
+        render();
+      } catch (err) {
+        showToast(err.message || 'No se pudo cargar la imagen.', 'error');
+      }
+    };
+
+    window.__vendorClearStoreMedia = (field) => {
+      if (!ui.session) return;
+      const st = getStoreById(ui.session.storeId);
+      if (!st) return;
+      st[field] = makeSvgFallbackDataUri(st.nombre, '#1A2A44');
+      saveState(db);
+      syncStoreToSheet(st);
+      render();
+    };
+
+    window.__vendorCopyFirstDayHours = () => {
+      const start = document.querySelector('[data-day-start="Lunes"]')?.value || '09:00';
+      const end = document.querySelector('[data-day-end="Lunes"]')?.value || '20:00';
+      const open = document.querySelector('[data-day-open="Lunes"]')?.checked ?? true;
+      document.querySelectorAll('[data-day-start]').forEach(el => { el.value = start; });
+      document.querySelectorAll('[data-day-end]').forEach(el => { el.value = end; });
+      document.querySelectorAll('[data-day-open]').forEach(el => { el.checked = open; });
+      showToast('Horario de Lunes copiado a toda la semana.', 'info');
+    };
+
+    window.__vendorOpenNewProductForm = (storeId) => {
+      const st = getStoreById(storeId);
+      ui.showProductForm = true;
+      ui.productFormDraft = {
+        id: null,
+        tiendaId: storeId,
+        nombre: '',
+        precio: 10000,
+        precioOferta: null,
+        cantidadStock: null,
+        categoria: st ? st.rubro : 'Otros',
+        descripcion: '',
+        stockDisponible: true,
+        esNuevo: true,
+        fotos: []
+      };
+      render();
+    };
+
+    window.__vendorEditProduct = (prodId) => {
+      const prod = db.productos.find(p => p.id === prodId);
+      if (!prod) return;
+      ui.showProductForm = true;
+      ui.productFormDraft = {
+        ...prod,
+        fotos: Array.isArray(prod.fotos) ? [...prod.fotos] : []
+      };
+      render();
+    };
+
+    window.__vendorUploadProductPhotos = async (event) => {
+      const files = Array.from(event.target.files || []);
+      if (!files.length || !ui.productFormDraft) return;
+      for (const f of files) {
+        if (ui.productFormDraft.fotos.length >= 3) break;
+        try {
+          const dataUrl = await readImageFileAsDataUrl(f);
+          ui.productFormDraft.fotos.push(dataUrl);
+        } catch (_) {}
+      }
+      render();
+    };
+
+    window.__vendorRemoveProductPhoto = (idx) => {
+      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
+      ui.productFormDraft.fotos.splice(idx, 1);
+      render();
+    };
+
+    window.__vendorMoveProductPhoto = (idx, dir) => {
+      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
+      const target = idx + dir;
+      if (target < 0 || target >= ui.productFormDraft.fotos.length) return;
+      const arr = ui.productFormDraft.fotos;
+      const tmp = arr[idx];
+      arr[idx] = arr[target];
+      arr[target] = tmp;
+      render();
+    };
+
+    window.__vendorMoveProduct = (prodId, dir) => {
+      const idx = db.productos.findIndex(p => p.id === prodId);
+      if (idx === -1) return;
+      const prod = db.productos[idx];
+      const sameStoreIndices = db.productos
+        .map((p, i) => (p.tiendaId === prod.tiendaId ? i : -1))
+        .filter(i => i !== -1);
+      const posInStore = sameStoreIndices.indexOf(idx);
+      const targetPos = posInStore + dir;
+      if (targetPos < 0 || targetPos >= sameStoreIndices.length) return;
+      const swapIdx = sameStoreIndices[targetPos];
+      const tmp = db.productos[idx];
+      db.productos[idx] = db.productos[swapIdx];
+      db.productos[swapIdx] = tmp;
+      saveState(db);
+      render();
+    };
+
+    window.__vendorToggleProductOffer = (prodId) => {
+      const prod = db.productos.find(p => p.id === prodId);
+      if (!prod) return;
+      const existingIdx = db.ofertas.findIndex(o => o.productoId === prod.id);
+      if (existingIdx !== -1 || prod.precioOferta) {
+        const removed = existingIdx !== -1 ? db.ofertas[existingIdx] : null;
+        if (existingIdx !== -1) db.ofertas.splice(existingIdx, 1);
+        prod.precioOferta = null;
+        saveState(db);
+        syncProductToSheet(prod);
+        if (removed) syncOfferToSheet(removed, 'delete');
+        showToast('Oferta quitada.', 'info');
+      } else {
+        const offerPrice = Math.max(100, Math.round(prod.precio * 0.8));
+        prod.precioOferta = offerPrice;
+        const newOffer = {
+          id: 'of-' + Date.now(),
+          productoId: prod.id,
+          tiendaId: prod.tiendaId,
+          precioOferta: offerPrice,
+          hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+          destacada: false
+        };
+        db.ofertas.unshift(newOffer);
+        saveState(db);
+        syncProductToSheet(prod);
+        syncOfferToSheet(newOffer);
+        showToast(`¡Oferta activada a ${formatARS(offerPrice)} (-20%)!`, 'success');
+      }
+      render();
+    };
+
+    window.__vendorDuplicateProduct = (prodId) => {
+      const prod = db.productos.find(p => p.id === prodId);
+      if (!prod) return;
+      const copy = {
+        ...prod,
+        id: 'prod-' + Date.now(),
+        nombre: prod.nombre + ' (copia)',
+        fotos: Array.isArray(prod.fotos) ? [...prod.fotos] : []
+      };
+      db.productos.unshift(copy);
+      saveState(db);
+      syncProductToSheet(copy);
+      showToast('Producto duplicado.', 'success');
+      render();
+    };
+
+    window.__vendorAskDeleteProduct = (prodId) => {
+      const prod = db.productos.find(p => p.id === prodId);
+      if (!prod) return;
+      openVendorConfirmModal(
+        'Borrar producto',
+        `¿Seguro que querés eliminar "${prod.nombre}" de tu catálogo?`,
+        () => {
+          db.productos = db.productos.filter(p => p.id !== prodId);
+          db.ofertas = db.ofertas.filter(o => o.productoId !== prodId);
+          saveState(db);
+          syncProductToSheet(prod, 'delete');
+          showToast('Producto eliminado.', 'info');
+          render();
+        }
+      );
+    };
+
+    window.__vendorSetOrderStatus = (orderId, newStatus) => {
+      const ord = db.pedidos.find(o => o.id === orderId);
+      if (!ord) return;
+      ord.estado = newStatus;
+      ord.esNuevoNoVisto = false;
+      saveState(db);
+      syncOrderToSheet(ord);
+      showToast(`Pedido #${ord.id} actualizado a ${newStatus}.`, 'success');
+      render();
+    };
+
+    window.__vendorContactOrderClient = (orderId) => {
+      const ord = db.pedidos.find(o => o.id === orderId);
+      if (!ord) return;
+      const msg = `Hola ${ord.cliente}, te escribimos por tu pedido #${ord.id} en Mercado Tres Arroyos (${formatARS(ord.total)}).`;
+      openWhatsAppUrl(SUPPORT_WHATSAPP, msg);
+    };
+
+    function bindPostRenderEvents() {
       const cartForm = document.getElementById('cart-checkout-form');
       if (cartForm) {
         cartForm.addEventListener('submit', (e) => {
           e.preventDefault();
           if (db.carrito.length === 0) return;
 
-          const cliente = String(document.getElementById('cart-customer-name').value || '').trim();
-          const barrio = String(document.getElementById('cart-customer-barrio').value || 'Centro').trim();
-          const direccion = String(document.getElementById('cart-customer-address').value || '').trim();
-          const nota = String(document.getElementById('cart-customer-note').value || '').trim();
+          const customerName = String(document.getElementById('cart-customer-name').value || '').trim();
+          const customerBarrio = String(document.getElementById('cart-customer-barrio').value || 'Centro').trim();
+          const customerAddress = String(document.getElementById('cart-customer-address').value || '').trim();
+          const customerNote = String(document.getElementById('cart-customer-note').value || '').trim();
 
-          if (!cliente || !direccion) {
+          if (!customerName || !customerAddress) {
             showToast('Completá tu nombre y dirección para enviar el pedido.', 'error');
             return;
           }
@@ -4374,65 +4543,72 @@
             byStore.get(item.tiendaId).push(item);
           });
 
-          const firstEntry = Array.from(byStore.entries())[0];
-          const [targetStoreId, targetItems] = firstEntry;
-          const targetStore = getStoreById(targetStoreId) || { nombre: 'Tienda', whatsapp: SUPPORT_WHATSAPP, haceEnvios: true, precioEnvio: 1500 };
+          const firstStoreEntry = Array.from(byStore.entries())[0];
+          const [firstStoreId, firstItems] = firstStoreEntry;
+          const firstStore = getStoreById(firstStoreId) || { nombre: 'Tienda', whatsapp: SUPPORT_WHATSAPP, haceEnvios: true, precioEnvio: 1500 };
 
-          const sub = targetItems.reduce((s, i) => s + i.precio * i.cantidad, 0);
-          const ship = targetStore.haceEnvios
-            ? ((targetStore.envioGratisDesde && sub >= targetStore.envioGratisDesde) ? 0 : (Number(targetStore.precioEnvio) || 0))
-            : 0;
-          const total = sub + ship;
+          byStore.forEach((items, storeId) => {
+            const st = getStoreById(storeId) || { nombre: 'Tienda', whatsapp: SUPPORT_WHATSAPP, haceEnvios: true, precioEnvio: 1500 };
+            const sub = items.reduce((s, it) => s + it.precio * it.cantidad, 0);
+            const ship = st.haceEnvios ? ((st.envioGratisDesde && sub >= st.envioGratisDesde) ? 0 : (Number(st.precioEnvio) || 0)) : 0;
+            const total = sub + ship;
+            const orderId = 'PED-' + Math.floor(1000 + Math.random() * 9000);
 
-          const lines = targetItems.map(i => `• ${i.cantidad}x ${i.nombre} (${formatARS(i.precio * i.cantidad)})`).join('\n');
-          const msg = `Hola ${targetStore.nombre}, quiero hacer este pedido desde Mercado Tres Arroyos:\n\n${lines}\n\nSubtotal: ${formatARS(sub)}\nEnvío: ${formatARS(ship)}\nTotal: ${formatARS(total)}\n\nNombre: ${cliente}\nBarrio: ${barrio}\nDirección: ${direccion}${nota ? `\nNota: ${nota}` : ''}`;
+            const newOrder = {
+              id: orderId,
+              tiendaId: storeId,
+              tiendaNombre: st.nombre,
+              cliente: customerName,
+              barrio: customerBarrio,
+              direccion: customerAddress,
+              nota: customerNote,
+              fecha: 'Hoy ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+              estado: 'Nuevo',
+              esNuevoNoVisto: true,
+              total,
+              items: items.map(it => ({
+                productoId: it.productoId,
+                nombre: it.nombre,
+                cantidad: it.cantidad,
+                precioUnitario: it.precio,
+                foto: it.foto
+              }))
+            };
 
-          const newOrder = {
-            id: 'PED-' + Math.floor(1000 + Math.random() * 9000),
-            tiendaId: targetStore.id,
-            tiendaNombre: targetStore.nombre,
-            cliente,
-            barrio,
-            direccion,
-            nota,
-            fecha: 'Hoy ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
-            estado: 'Nuevo',
-            esNuevoNoVisto: true,
-            total,
-            items: targetItems.map(i => ({
-              productoId: i.productoId,
-              nombre: i.nombre,
-              cantidad: i.cantidad,
-              precioUnitario: i.precio,
-              foto: i.foto
-            }))
-          };
+            db.pedidos.unshift(newOrder);
+            syncOrderToSheet(newOrder);
 
-          db.pedidos.unshift(newOrder);
-          db.misPedidosCliente.unshift({
-            id: newOrder.id,
-            tiendaId: targetStore.id,
-            tiendaNombre: targetStore.nombre,
-            total,
-            resumenItems: targetItems.map(i => `${i.cantidad}x ${i.nombre}`).join(', '),
-            items: newOrder.items
+            db.misPedidosCliente.unshift({
+              id: orderId,
+              tiendaId: storeId,
+              tiendaNombre: st.nombre,
+              total,
+              resumenItems: items.map(it => `${it.cantidad}x ${it.nombre}`).join(', '),
+              items: items.map(it => ({ productoId: it.productoId, cantidad: it.cantidad }))
+            });
           });
 
+          const subFirst = firstItems.reduce((s, it) => s + it.precio * it.cantidad, 0);
+          const shipFirst = firstStore.haceEnvios ? ((firstStore.envioGratisDesde && subFirst >= firstStore.envioGratisDesde) ? 0 : (Number(firstStore.precioEnvio) || 0)) : 0;
+          const totalFirst = subFirst + shipFirst;
+          const lines = firstItems.map(it => `- ${it.cantidad}x ${it.nombre} (${formatARS(it.precio * it.cantidad)})`).join('\n');
+          const waMessage = `Hola ${firstStore.nombre}, te paso mi pedido de Mercado Tres Arroyos:\n\n${lines}\n\nSubtotal: ${formatARS(subFirst)}\nEnvío: ${formatARS(shipFirst)}\nTotal: ${formatARS(totalFirst)}\n\nNombre: ${customerName}\nDirección: ${customerAddress} (${customerBarrio})${customerNote ? `\nNota: ${customerNote}` : ''}`;
+
           db.carrito = [];
-          ui.cartOpen = false;
           saveState(db);
-          syncOrderToSheet(newOrder);
-          openWhatsAppUrl(targetStore.whatsapp, msg);
+          ui.cartOpen = false;
           render();
+          showToast('¡Pedido registrado! Abriendo WhatsApp...', 'success');
+          openWhatsAppUrl(firstStore.whatsapp, waMessage);
         });
       }
 
-      const s1Form = document.getElementById('reg-step-1-form');
-      if (s1Form) {
-        s1Form.addEventListener('submit', (e) => {
+      const reg1 = document.getElementById('reg-step-1-form');
+      if (reg1) {
+        reg1.addEventListener('submit', (e) => {
           e.preventDefault();
           if (!ui.regDraft.nombre.trim() || !ui.regDraft.whatsapp.trim() || !ui.regDraft.email.trim() || !ui.regDraft.password.trim()) {
-            showToast('Completá todos los campos obligatorios del Paso 1.', 'error');
+            showToast('Completá todos los campos obligatorios.', 'error');
             return;
           }
           ui.regStep = 2;
@@ -4440,18 +4616,18 @@
         });
       }
 
-      const s2Form = document.getElementById('reg-step-2-form');
-      if (s2Form) {
-        s2Form.addEventListener('submit', (e) => {
+      const reg2 = document.getElementById('reg-step-2-form');
+      if (reg2) {
+        reg2.addEventListener('submit', (e) => {
           e.preventDefault();
           ui.regStep = 3;
           render();
         });
       }
 
-      const s3Form = document.getElementById('reg-step-3-form');
-      if (s3Form) {
-        s3Form.addEventListener('submit', (e) => {
+      const reg3 = document.getElementById('reg-step-3-form');
+      if (reg3) {
+        reg3.addEventListener('submit', (e) => {
           e.preventDefault();
           const d = ui.regDraft;
           if (!d.prodNombre.trim() || !(Number(d.prodPrecio) > 0)) {
@@ -4459,63 +4635,67 @@
             return;
           }
 
-          const storeId = 'tienda-' + Date.now();
-          const storeName = d.nombre.trim().toUpperCase();
-          const baseSlug = slugify(storeName);
+          const newStoreId = 'tienda-' + Date.now();
+          const baseSlug = slugify(d.nombre);
           const uniqueSlug = db.tiendas.some(t => t.slug === baseSlug) ? `${baseSlug}-${Math.floor(10 + Math.random() * 89)}` : baseSlug;
+          const todayISO = new Date().toISOString().split('T')[0];
 
           const newStore = {
-            id: storeId,
+            id: newStoreId,
             slug: uniqueSlug,
-            nombre: storeName,
+            nombre: d.nombre.trim().toUpperCase(),
             dueno: d.nombre.trim(),
             email: d.email.trim().toLowerCase(),
             password: d.password.trim(),
-            esPlantillaDemo: false,
-            rubro: d.rubro || 'Otros',
-            barrio: d.barrio || 'Centro',
-            direccion: d.barrio || 'Centro',
+            rubro: d.rubro,
+            barrio: d.barrio,
+            direccion: d.barrio + ', Tres Arroyos',
             whatsapp: normalizeWhatsAppPhone(d.whatsapp),
             instagram: '',
-            logo: d.logo || makeSvgFallbackDataUri(storeName, '#1A2A44'),
-            portada: d.portada || makeSvgFallbackDataUri(storeName, '#2E7D32'),
-            descripcion: d.descripcion.trim() || `Tienda de ${storeName} en Tres Arroyos.`,
-            antiguedadTexto: 'Nueva tienda en Tres Arroyos',
+            logo: d.logo || makeSvgFallbackDataUri(d.nombre, '#1A2A44'),
+            portada: d.portada || makeSvgFallbackDataUri(d.nombre, '#2E7D32'),
+            descripcion: d.descripcion.trim() || `Tienda local de ${d.rubro} en ${d.barrio}, Tres Arroyos.`,
+            antiguedadTexto: 'Nueva en Tres Arroyos',
             rating: 5.0,
             reviewCount: 0,
             fiveStarCount: 0,
             salesCount: 1,
             verificado: false,
             abiertoAhora: true,
-            horarioTexto: d.horarioTexto || 'Lun a Sáb 9 a 20',
+            horarioTexto: d.horarioTexto.trim() || 'Lun a Sáb 9 a 20',
             haceEnvios: Boolean(d.haceEnvios),
             envioHoy: Boolean(d.haceEnvios),
-            precioEnvio: Number(d.precioEnvio) || 1500,
+            precioEnvio: d.haceEnvios ? 1500 : 0,
             envioGratisDesde: 0,
-            aceptaEncargo: false,
+            aceptaEncargo: true,
             metodosPago: ['Efectivo', 'Transferencia'],
             estadoSuscripcion: 'ACTIVA',
-            fechaRegistro: new Date().toISOString().split('T')[0],
+            fechaRegistro: todayISO,
             horariosSemana: makeDefaultHours('09:00', '20:00', false)
           };
 
           const firstProd = {
             id: 'prod-' + Date.now(),
-            tiendaId: storeId,
+            tiendaId: newStoreId,
             nombre: d.prodNombre.trim(),
             precio: Number(d.prodPrecio),
             precioOferta: null,
             esNuevo: true,
             stockDisponible: true,
             cantidadStock: 10,
-            categoria: d.rubro || 'Otros',
-            descripcion: 'Primer producto publicado en Mercado Tres Arroyos.',
-            fotos: [d.prodFoto || makeSvgFallbackDataUri(d.prodNombre.trim(), '#1A2A44')]
+            categoria: d.rubro,
+            descripcion: `Producto destacado de ${newStore.nombre}.`,
+            fotos: [d.prodFoto || makeSvgFallbackDataUri(d.prodNombre, '#1A2A44')]
           };
 
           db.tiendas.unshift(newStore);
           db.productos.unshift(firstProd);
-          ui.session = { role: 'VENDOR', storeId: storeId };
+          saveState(db);
+
+          syncStoreToSheet(newStore);
+          syncProductToSheet(firstProd);
+
+          ui.session = { role: 'VENDOR', storeId: newStoreId };
           ui.regStep = 1;
           ui.regDraft = {
             nombre: '',
@@ -4535,433 +4715,248 @@
             prodFoto: ''
           };
 
-          saveState(db);
-          syncStoreToSheet(newStore);
-          syncProductToSheet(firstProd);
-          showToast(`¡Tu tienda "${storeName}" ya está publicada!`, 'success');
-          navigate('TIENDA_PERFIL', { storeSlug: uniqueSlug });
+          showToast('¡Tu tienda ya está publicada!', 'success');
+          navigate('PANEL_TIENDA', { vendorTab: 'MI_TIENDA' });
         });
       }
 
       const vendorStoreForm = document.getElementById('vendor-store-form');
-      if (vendorStoreForm) {
+      if (vendorStoreForm && ui.session) {
         vendorStoreForm.addEventListener('submit', (e) => {
           e.preventDefault();
-          const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID) || db.tiendas[0];
-          if (!store) return;
+          const st = getStoreById(ui.session.storeId);
+          if (!st) return;
 
-          const newName = String(document.getElementById('v-store-name').value || '').trim().toUpperCase();
-          const newRubro = document.getElementById('v-store-rubro').value;
-          const newEmail = String(document.getElementById('v-store-email').value || '').trim().toLowerCase();
-          const newPass = String(document.getElementById('v-store-password').value || '').trim();
-          const newDesc = String(document.getElementById('v-store-desc').value || '').trim();
-          const newBarrio = document.getElementById('v-store-barrio').value;
-          const newDir = String(document.getElementById('v-store-dir').value || '').trim();
-          const newWa = String(document.getElementById('v-store-wa').value || '').trim();
-          const newIg = String(document.getElementById('v-store-ig').value || '').trim();
-          const newHoursText = String(document.getElementById('v-store-hours-text').value || '').trim();
-          const newShip = document.getElementById('v-store-shipping').checked;
-          const newShipPrice = Number(document.getElementById('v-store-ship-price').value) || 0;
-          const newShipFree = Number(document.getElementById('v-store-ship-free').value) || 0;
-          const newEncargo = document.getElementById('v-store-encargo').checked;
-
-          const daysList = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-          const updatedHours = {};
-          daysList.forEach(d => {
-            const openEl = document.querySelector(`[data-day-open="${d}"]`);
-            const startEl = document.querySelector(`[data-day-start="${d}"]`);
-            const endEl = document.querySelector(`[data-day-end="${d}"]`);
-            updatedHours[d] = {
-              abierto: openEl ? openEl.checked : true,
-              apertura: startEl ? startEl.value : '09:00',
-              cierre: endEl ? endEl.value : '20:00'
+          const newHours = {};
+          ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].forEach(day => {
+            newHours[day] = {
+              abierto: Boolean(document.querySelector(`[data-day-open="${day}"]`)?.checked),
+              apertura: document.querySelector(`[data-day-start="${day}"]`)?.value || '09:00',
+              cierre: document.querySelector(`[data-day-end="${day}"]`)?.value || '20:00'
             };
           });
 
           const payMethods = [];
-          document.querySelectorAll('[data-pay-method]').forEach(chk => {
-            if (chk.checked) payMethods.push(chk.getAttribute('data-pay-method'));
+          document.querySelectorAll('[data-pay-method]').forEach(cb => {
+            if (cb.checked) payMethods.push(cb.getAttribute('data-pay-method'));
           });
 
-          const patch = {
-            nombre: newName || store.nombre,
-            rubro: newRubro,
-            email: newEmail || store.email,
-            password: newPass || store.password,
-            descripcion: newDesc,
-            barrio: newBarrio,
-            direccion: newDir,
-            whatsapp: newWa,
-            instagram: newIg,
-            horarioTexto: newHoursText,
-            haceEnvios: newShip,
-            envioHoy: newShip,
-            precioEnvio: newShipPrice,
-            envioGratisDesde: newShipFree,
-            aceptaEncargo: newEncargo,
-            horariosSemana: updatedHours,
-            metodosPago: payMethods.length > 0 ? payMethods : ['Efectivo']
+          const updatedFields = {
+            nombre: String(document.getElementById('v-store-name').value || st.nombre).trim(),
+            rubro: document.getElementById('v-store-rubro').value || st.rubro,
+            email: String(document.getElementById('v-store-email').value || st.email || '').trim().toLowerCase(),
+            password: String(document.getElementById('v-store-password').value || st.password || '123456').trim(),
+            descripcion: String(document.getElementById('v-store-desc').value || '').trim(),
+            barrio: document.getElementById('v-store-barrio').value || st.barrio,
+            direccion: String(document.getElementById('v-store-dir').value || '').trim(),
+            whatsapp: normalizeWhatsAppPhone(document.getElementById('v-store-wa').value || st.whatsapp),
+            instagram: String(document.getElementById('v-store-ig').value || '').trim(),
+            horarioTexto: String(document.getElementById('v-store-hours-text').value || '').trim(),
+            haceEnvios: Boolean(document.getElementById('v-store-shipping').checked),
+            precioEnvio: Number(document.getElementById('v-store-ship-price').value) || 0,
+            envioGratisDesde: Number(document.getElementById('v-store-ship-free').value) || 0,
+            aceptaEncargo: Boolean(document.getElementById('v-store-encargo').checked),
+            metodosPago: payMethods.length > 0 ? payMethods : ['Efectivo'],
+            horariosSemana: newHours
           };
 
-          if (isTemplateStore(store)) {
-            const res = materializeOwnStoreFromTemplate(store, patch);
-            if (res.cloned) {
-              showToast(`¡Listo! Se creó tu tienda propia "${res.store.nombre}" y la plantilla original sigue intacta.`, 'success');
+          if (isTemplateStore(st)) {
+            const result = materializeOwnStoreFromTemplate(st, updatedFields);
+            if (result.cloned) {
+              showToast(`¡Listo! Se creó tu tienda propia "${result.store.nombre}" con tu email y contraseña.`, 'success');
               render();
               return;
             }
           }
 
-          Object.assign(store, patch);
+          Object.assign(st, updatedFields);
           saveState(db);
-          syncStoreToSheet(store);
-          showToast('Cambios guardados en tu tienda.', 'success');
+          syncStoreToSheet(st);
+          showToast('¡Cambios guardados y sincronizados!', 'success');
           render();
         });
       }
 
       const vendorProdForm = document.getElementById('vendor-product-form');
-      if (vendorProdForm) {
+      if (vendorProdForm && ui.productFormDraft) {
         vendorProdForm.addEventListener('submit', (e) => {
           e.preventDefault();
-          const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID) || db.tiendas[0];
-          const draft = ui.productFormDraft;
-          if (!store || !draft) return;
+          const d = ui.productFormDraft;
+          const nameInputEl = document.getElementById('prod-name-input');
+          const priceInputEl = document.getElementById('prod-price-input');
+          const offerInputEl = document.getElementById('prod-offer-input');
+          if (nameInputEl) d.nombre = nameInputEl.value;
+          if (priceInputEl) d.precio = Number(priceInputEl.value) || 0;
+          if (offerInputEl) d.precioOferta = offerInputEl.value ? Number(offerInputEl.value) : null;
 
-          const nameInput = document.getElementById('prod-name-input');
-          const priceInput = document.getElementById('prod-price-input');
-          const offerInput = document.getElementById('prod-offer-input');
-          if (nameInput) draft.nombre = nameInput.value;
-          if (priceInput) draft.precio = Number(priceInput.value) || 0;
-          if (offerInput) draft.precioOferta = offerInput.value ? Number(offerInput.value) : null;
-
-          const cleanName = String(draft.nombre || '').trim();
-          const cleanPrice = Number(draft.precio) || 0;
-          if (!cleanName || cleanPrice <= 0) {
-            showToast('Completá el nombre y un precio válido.', 'error');
+          if (!d.nombre || !d.nombre.trim() || !(Number(d.precio) > 0)) {
+            showToast('Completá el nombre y el precio del producto.', 'error');
             return;
           }
 
-          const cleanOffer = draft.precioOferta && Number(draft.precioOferta) > 0 && Number(draft.precioOferta) < cleanPrice
-            ? Number(draft.precioOferta)
+          const cleanPhotos = (Array.isArray(d.fotos) && d.fotos.length > 0)
+            ? d.fotos.slice(0, 3)
+            : [makeSvgFallbackDataUri(d.nombre, '#1A2A44')];
+
+          const offerVal = (d.precioOferta && Number(d.precioOferta) > 0 && Number(d.precioOferta) < Number(d.precio))
+            ? Number(d.precioOferta)
             : null;
 
-          const prodId = draft.id || ('prod-' + Date.now());
-          const prodObj = {
-            id: prodId,
-            tiendaId: store.id,
-            nombre: cleanName,
-            precio: cleanPrice,
-            precioOferta: cleanOffer,
-            esNuevo: Boolean(draft.esNuevo),
-            stockDisponible: draft.stockDisponible !== false,
-            cantidadStock: draft.cantidadStock !== null && draft.cantidadStock !== undefined && draft.cantidadStock !== '' ? Number(draft.cantidadStock) : null,
-            categoria: draft.categoria || store.rubro || 'Otros',
-            descripcion: String(draft.descripcion || '').trim(),
-            fotos: (Array.isArray(draft.fotos) && draft.fotos.length > 0) ? draft.fotos.slice(0, 3) : [makeSvgFallbackDataUri(cleanName, '#1A2A44')]
-          };
+          if (d.id) {
+            const existing = db.productos.find(p => p.id === d.id);
+            if (existing) {
+              existing.nombre = d.nombre.trim();
+              existing.categoria = d.categoria || existing.categoria;
+              existing.precio = Number(d.precio);
+              existing.precioOferta = offerVal;
+              existing.cantidadStock = d.cantidadStock !== null && d.cantidadStock !== '' ? Number(d.cantidadStock) : null;
+              existing.descripcion = String(d.descripcion || '').trim();
+              existing.stockDisponible = Boolean(d.stockDisponible);
+              existing.esNuevo = Boolean(d.esNuevo);
+              existing.fotos = cleanPhotos;
 
-          const existingIdx = db.productos.findIndex(p => p.id === prodId);
-          if (existingIdx >= 0) {
-            db.productos[existingIdx] = prodObj;
+              const oldOfferIdx = db.ofertas.findIndex(o => o.productoId === existing.id);
+              const removedOffer = oldOfferIdx !== -1 ? db.ofertas[oldOfferIdx] : null;
+              if (oldOfferIdx !== -1) db.ofertas.splice(oldOfferIdx, 1);
+
+              if (offerVal) {
+                const newOffer = {
+                  id: 'of-' + Date.now(),
+                  productoId: existing.id,
+                  tiendaId: existing.tiendaId,
+                  precioOferta: offerVal,
+                  hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+                  destacada: false
+                };
+                db.ofertas.unshift(newOffer);
+                syncOfferToSheet(newOffer);
+              } else if (removedOffer) {
+                syncOfferToSheet(removedOffer, 'delete');
+              }
+
+              syncProductToSheet(existing);
+            }
           } else {
-            db.productos.unshift(prodObj);
+            const newProd = {
+              id: 'prod-' + Date.now(),
+              tiendaId: d.tiendaId,
+              nombre: d.nombre.trim(),
+              categoria: d.categoria || 'Otros',
+              precio: Number(d.precio),
+              precioOferta: offerVal,
+              cantidadStock: d.cantidadStock !== null && d.cantidadStock !== '' ? Number(d.cantidadStock) : null,
+              descripcion: String(d.descripcion || '').trim(),
+              stockDisponible: Boolean(d.stockDisponible),
+              esNuevo: Boolean(d.esNuevo),
+              fotos: cleanPhotos
+            };
+            db.productos.unshift(newProd);
+            if (offerVal) {
+              const newOffer = {
+                id: 'of-' + Date.now(),
+                productoId: newProd.id,
+                tiendaId: newProd.tiendaId,
+                precioOferta: offerVal,
+                hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+                destacada: false
+              };
+              db.ofertas.unshift(newOffer);
+              syncOfferToSheet(newOffer);
+            }
+            syncProductToSheet(newProd);
           }
 
-          const offerObj = {
-            id: 'of-' + prodId,
-            productoId: prodId,
-            tiendaId: store.id,
-            precioOferta: cleanOffer || 0,
-            hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
-            destacada: false
-          };
-
-          if (cleanOffer) {
-            const offIdx = db.ofertas.findIndex(o => o.productoId === prodId);
-            if (offIdx >= 0) db.ofertas[offIdx] = offerObj;
-            else db.ofertas.unshift(offerObj);
-            syncOfferToSheet(offerObj, 'upsert');
-          } else {
-            const prevOffer = db.ofertas.find(o => o.productoId === prodId);
-            db.ofertas = db.ofertas.filter(o => o.productoId !== prodId);
-            if (prevOffer) syncOfferToSheet(prevOffer, 'delete');
-          }
-
+          saveState(db);
           ui.showProductForm = false;
           ui.productFormDraft = null;
-          saveState(db);
-          syncProductToSheet(prodObj);
-          showToast('Producto guardado correctamente.', 'success');
+          showToast('¡Producto guardado y sincronizado!', 'success');
           render();
         });
       }
     }
 
-    window.__openDemoTemplateAsVendor = function () {
-      ensureDemoTemplateExists();
-      ui.session = { role: 'VENDOR', storeId: DEMO_TEMPLATE_ID };
-      ui.vendorTab = 'MI_TIENDA';
-      saveState(db);
-      showToast('Abriste la plantilla guía. Podés editarla o cambiar email y contraseña para hacerla tu tienda.', 'info');
-      navigate('PANEL_TIENDA', {},);
-    };
+    function renderFooter() {
+      const supportWaMsg = 'Hola Mercado Tres Arroyos, necesito ayuda.';
+      return `
+        <footer class="bg-[#1A2A44] text-white mt-auto border-t border-slate-800">
+          <div class="max-w-7xl mx-auto px-4 sm:px-6 py-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 text-sm">
+            <div>
+              <div class="font-extrabold text-lg tracking-tight">MERCADO TRES ARROYOS</div>
+              <p class="mt-2 text-white/75 text-xs leading-relaxed">
+                Comprá local. Todo Tres Arroyos en un solo lugar.
+              </p>
+            </div>
 
-    window.__vendorToggleOpen = function (storeId) {
-      const store = getStoreById(storeId);
-      if (!store) return;
-      store.abiertoAhora = !store.abiertoAhora;
-      saveState(db);
-      syncStoreToSheet(store);
-      showToast(store.abiertoAhora ? 'Tu tienda ahora figura ABIERTA.' : 'Tu tienda ahora figura CERRADA.', 'info');
-      render();
-    };
+            <div>
+              <div class="font-extrabold text-xs uppercase tracking-wider text-white/60 mb-3">Compradores</div>
+              <ul class="space-y-2 text-xs font-semibold">
+                <li><button type="button" onclick="navigate('INICIO')" class="hover:underline">Inicio</button></li>
+                <li><button type="button" onclick="navigate('TIENDAS')" class="hover:underline">Tiendas</button></li>
+                <li><button type="button" onclick="navigate('OFERTAS')" class="hover:underline">Ofertas del día</button></li>
+                <li><button type="button" onclick="ui.cartOpen = true; render();" class="hover:underline">Tu pedido</button></li>
+              </ul>
+            </div>
 
-    window.__vendorUploadStoreMedia = async function (event, field) {
-      const file = event.target.files && event.target.files[0];
-      if (!file) return;
-      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID) || db.tiendas[0];
-      if (!store) return;
-      try {
-        const dataUrl = await readImageFileAsDataUrl(file);
-        store[field] = dataUrl;
-        saveState(db);
-        syncStoreToSheet(store);
-        showToast(field === 'logo' ? 'Logo actualizado desde tu galería.' : 'Portada actualizada desde tu galería.', 'success');
-        render();
-      } catch (err) {
-        showToast(err.message || 'No se pudo cargar la imagen.', 'error');
-      }
-    };
+            <div>
+              <div class="font-extrabold text-xs uppercase tracking-wider text-white/60 mb-3">Emprendedores</div>
+              <ul class="space-y-2 text-xs font-semibold">
+                <li><button type="button" onclick="navigate('QUIERO_VENDER')" class="hover:underline">Abrir mi tienda</button></li>
+                <li><button type="button" onclick="openLoginModal()" class="hover:underline">Ingresar a mi tienda</button></li>
+              </ul>
+            </div>
 
-    window.__vendorClearStoreMedia = function (field) {
-      const store = (ui.session && ui.session.storeId) ? getStoreById(ui.session.storeId) : getStoreById(DEMO_TEMPLATE_ID) || db.tiendas[0];
-      if (!store) return;
-      store[field] = field === 'logo' ? makeSvgFallbackDataUri(store.nombre, '#1A2A44') : makeSvgFallbackDataUri(store.nombre, '#2E7D32');
-      saveState(db);
-      syncStoreToSheet(store);
-      showToast('Imagen restablecida.', 'info');
-      render();
-    };
-
-    window.__vendorCopyFirstDayHours = function () {
-      const firstStart = document.querySelector('[data-day-start="Lunes"]');
-      const firstEnd = document.querySelector('[data-day-end="Lunes"]');
-      const sVal = firstStart ? firstStart.value : '09:00';
-      const eVal = firstEnd ? firstEnd.value : '20:00';
-      document.querySelectorAll('[data-day-start]').forEach(el => { el.value = sVal; });
-      document.querySelectorAll('[data-day-end]').forEach(el => { el.value = eVal; });
-      showToast(`Horario ${sVal} a ${eVal} copiado a todos los días.`, 'info');
-    };
-
-    window.__vendorOpenNewProductForm = function (storeId) {
-      const store = getStoreById(storeId) || getStoreById(DEMO_TEMPLATE_ID) || db.tiendas[0];
-      ui.showProductForm = true;
-      ui.productFormDraft = {
-        id: null,
-        tiendaId: store.id,
-        nombre: '',
-        precio: 10000,
-        precioOferta: null,
-        esNuevo: true,
-        stockDisponible: true,
-        cantidadStock: 10,
-        categoria: store.rubro || 'Otros',
-        descripcion: '',
-        fotos: [makeSvgFallbackDataUri(store.nombre, '#1A2A44')]
-      };
-      render();
-    };
-
-    window.__vendorEditProduct = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      ui.showProductForm = true;
-      ui.productFormDraft = {
-        ...prod,
-        fotos: Array.isArray(prod.fotos) ? [...prod.fotos] : []
-      };
-      render();
-    };
-
-    window.__vendorUploadProductPhotos = async function (event) {
-      const files = Array.from(event.target.files || []);
-      if (files.length === 0 || !ui.productFormDraft) return;
-      const current = Array.isArray(ui.productFormDraft.fotos) ? [...ui.productFormDraft.fotos] : [];
-      for (const f of files) {
-        if (current.length >= 3) break;
-        try {
-          const dataUrl = await readImageFileAsDataUrl(f);
-          current.push(dataUrl);
-        } catch (_) {}
-      }
-      ui.productFormDraft.fotos = current.slice(0, 3);
-      showToast('Fotos cargadas desde tu galería.', 'success');
-      render();
-    };
-
-    window.__vendorMoveProductPhoto = function (index, delta) {
-      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
-      const arr = ui.productFormDraft.fotos;
-      const target = index + delta;
-      if (target < 0 || target >= arr.length) return;
-      const temp = arr[index];
-      arr[index] = arr[target];
-      arr[target] = temp;
-      render();
-    };
-
-    window.__vendorRemoveProductPhoto = function (index) {
-      if (!ui.productFormDraft || !Array.isArray(ui.productFormDraft.fotos)) return;
-      ui.productFormDraft.fotos.splice(index, 1);
-      render();
-    };
-
-    window.__vendorToggleProductOffer = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      const pricing = getEffectivePrice(prod);
-      if (pricing.hasOffer) {
-        prod.precioOferta = null;
-        const removedOffer = db.ofertas.find(o => o.productoId === productId);
-        db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
-        saveState(db);
-        syncProductToSheet(prod);
-        if (removedOffer) syncOfferToSheet(removedOffer, 'delete');
-        showToast('Oferta quitada del producto.', 'info');
-      } else {
-        const discounted = Math.max(100, Math.round(prod.precio * 0.8));
-        prod.precioOferta = discounted;
-        const offerRecord = {
-          id: 'of-' + productId,
-          productoId: productId,
-          tiendaId: prod.tiendaId,
-          precioOferta: discounted,
-          hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
-          destacada: false
-        };
-        db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
-        db.ofertas.unshift(offerRecord);
-        saveState(db);
-        syncProductToSheet(prod);
-        syncOfferToSheet(offerRecord, 'upsert');
-        showToast(`Oferta activada a ${formatARS(discounted)}.`, 'success');
-      }
-      render();
-    };
-
-    window.__vendorDuplicateProduct = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      const copy = {
-        ...prod,
-        id: 'prod-' + Date.now(),
-        nombre: prod.nombre + ' (copia)',
-        fotos: Array.isArray(prod.fotos) ? [...prod.fotos] : [SAMPLE_FALLBACK_PHOTO]
-      };
-      db.productos.unshift(copy);
-      saveState(db);
-      syncProductToSheet(copy);
-      showToast('Producto duplicado.', 'success');
-      render();
-    };
-
-    window.__vendorMoveProduct = function (productId, delta) {
-      const idx = db.productos.findIndex(p => p.id === productId);
-      if (idx === -1) return;
-      const target = idx + delta;
-      if (target < 0 || target >= db.productos.length) return;
-      const temp = db.productos[idx];
-      db.productos[idx] = db.productos[target];
-      db.productos[target] = temp;
-      saveState(db);
-      render();
-    };
-
-    window.__vendorAskDeleteProduct = function (productId) {
-      const prod = db.productos.find(p => p.id === productId);
-      if (!prod) return;
-      openModal(`
-        <div class="p-5 sm:p-6">
-          <h2 class="font-extrabold text-lg text-[#1A2A44]">¿Borrar producto?</h2>
-          <p class="text-sm text-[#666666] mt-2">Vas a eliminar <strong>${escapeHtml(prod.nombre)}</strong> de tu catálogo.</p>
-          <div class="mt-5 flex items-center gap-3">
-            <button type="button" onclick="window.__vendorConfirmDeleteProduct('${prod.id}')" class="min-h-[46px] px-5 py-2.5 rounded-xl bg-[#E53935] text-white font-extrabold text-sm">
-              Sí, borrar
-            </button>
-            <button type="button" onclick="closeModal()" class="min-h-[46px] px-5 py-2.5 rounded-xl bg-slate-100 text-[#111111] font-bold text-sm">
-              Cancelar
-            </button>
+            <div>
+              <div class="font-extrabold text-xs uppercase tracking-wider text-white/60 mb-3">Ayuda y contacto</div>
+              <button type="button" onclick="openWhatsAppUrl('${SUPPORT_WHATSAPP}', '${escapeHtml(supportWaMsg)}')" class="min-h-[44px] px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#1EB956] text-white font-bold text-xs inline-flex items-center gap-1.5">
+                <span>💬 WhatsApp soporte</span>
+              </button>
+              <div class="mt-3 text-xs text-white/60">Tres Arroyos, Buenos Aires, Argentina.</div>
+            </div>
           </div>
-        </div>
-      `);
-    };
-
-    window.__vendorConfirmDeleteProduct = function (productId) {
-      const removedOffer = db.ofertas.find(o => o.productoId === productId);
-      db.productos = db.productos.filter(p => p.id !== productId);
-      db.ofertas = db.ofertas.filter(o => o.productoId !== productId);
-      closeModal();
-      saveState(db);
-      syncProductToSheet({ id: productId }, 'delete');
-      if (removedOffer) syncOfferToSheet(removedOffer, 'delete');
-      showToast('Producto eliminado.', 'info');
-      render();
-    };
-
-    window.__vendorSetOrderStatus = function (orderId, newStatus) {
-      const ord = db.pedidos.find(o => o.id === orderId);
-      if (!ord) return;
-      ord.estado = newStatus;
-      ord.esNuevoNoVisto = false;
-      saveState(db);
-      syncOrderToSheet(ord);
-      showToast(`Pedido #${orderId} marcado como ${newStatus}.`, 'success');
-      render();
-    };
-
-    window.__vendorContactOrderClient = function (orderId) {
-      const ord = db.pedidos.find(o => o.id === orderId);
-      if (!ord) return;
-      const store = getStoreById(ord.tiendaId);
-      const msg = `Hola ${ord.cliente}, te escribimos de ${store ? store.nombre : 'la tienda'} por tu pedido #${ord.id} (${formatARS(ord.total)}).`;
-      openWhatsAppUrl(store ? store.whatsapp : SUPPORT_WHATSAPP, msg);
-    };
-
-    function render() {
-      const appEl = document.getElementById('app');
-      if (!appEl) return;
-
-      ensureDemoTemplateExists();
-
-      let pageHtml = '';
-      if (ui.route === 'TIENDAS') {
-        pageHtml = renderStoresDirectory();
-      } else if (ui.route === 'OFERTAS') {
-        pageHtml = renderOffersPage();
-      } else if (ui.route === 'QUIERO_VENDER') {
-        pageHtml = renderRegisterStoreWizard();
-      } else if (ui.route === 'TIENDA_PERFIL') {
-        pageHtml = renderStoreProfile();
-      } else if (ui.route === 'PANEL_TIENDA') {
-        pageHtml = renderVendorPanel();
-      } else {
-        pageHtml = renderHome();
-      }
-
-      appEl.innerHTML = `
-        ${renderHeader()}
-        ${pageHtml}
-        ${renderFooter()}
-        ${renderFloatingCartButton()}
-        ${renderCartDrawer()}
+          <div class="border-t border-white/10 py-4 px-4 sm:px-6 text-center text-xs text-white/50 flex items-center justify-center gap-2">
+            <span>© ${new Date().getFullYear()} Mercado Tres Arroyos</span>
+            <a href="admin.html" title="Administración" aria-label="Administración" class="text-[11px] text-white/25 hover:text-white/50 transition-colors leading-none">⚙️</a>
+          </div>
+        </footer>
       `;
-
-      bindDynamicEvents();
     }
 
-    render();
-    fetchSheetDataOnLoad(false);
+    function render() {
+      const app = document.getElementById('app');
+      if (!app) return;
+
+      let contentHtml = '';
+      if (ui.route === 'INICIO') {
+        contentHtml = renderHome();
+      } else if (ui.route === 'TIENDAS') {
+        contentHtml = renderStoresDirectory();
+      } else if (ui.route === 'OFERTAS') {
+        contentHtml = renderOffersPage();
+      } else if (ui.route === 'QUIERO_VENDER') {
+        contentHtml = renderRegisterStoreWizard();
+      } else if (ui.route === 'TIENDA_PERFIL') {
+        contentHtml = renderStoreProfile();
+      } else if (ui.route === 'PANEL_TIENDA') {
+        contentHtml = renderVendorPanel();
+      } else {
+        contentHtml = renderHome();
+      }
+
+      app.innerHTML = `
+        ${renderHeader()}
+        ${contentHtml}
+        ${renderFloatingCartButton()}
+        ${renderCartDrawer()}
+        ${renderFooter()}
+      `;
+
+      bindPostRenderEvents();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      render();
+      fetchSheetDataOnLoad(false);
+    });
   </script>
 </body>
 </html>
