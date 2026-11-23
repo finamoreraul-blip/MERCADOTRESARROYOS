@@ -1,0 +1,1636 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Administración — Mercado Tres Arroyos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+          },
+          colors: {
+            brandDark: '#1A2A44',
+            brandBlack: '#111111',
+            brandGray: '#666666',
+            whatsapp: '#25D366',
+            offerRed: '#E53935',
+            openGreen: '#2E7D32',
+            closedGray: '#9E9E9E',
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    html, body {
+      max-width: 100%;
+      overflow-x: hidden;
+      background-color: #F8FAFC;
+      color: #111111;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-[#111111] antialiased">
+
+  <div id="admin-app" class="min-h-screen flex flex-col"></div>
+  <div id="toast-container" class="fixed bottom-5 right-3 sm:right-6 z-[100] flex flex-col gap-2 max-w-sm w-auto pointer-events-none"></div>
+  <div id="modal-container" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60 backdrop-blur-[2px] p-3 sm:p-6 overflow-y-auto"></div>
+
+  <script>
+    /**
+     * PANEL DE ADMINISTRACIÓN — MERCADO TRES ARROYOS
+     * Gestión completa de tiendas, suscripciones/pagos, ofertas del día, reseñas, pedidos,
+     * carga de fotos desde galería (Base64) y sincronización bidireccional con Google Sheets.
+     */
+
+    const STORAGE_KEY = 'mercado_tres_arroyos_preview_v1';
+    const ADMIN_AUTH_KEY = 'mercado_ta_admin_auth_v1';
+    const SUPPORT_WHATSAPP = '5492983000000';
+    const SHEET_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyFNP9iDnWEdjJ-oUlhl7VpE63_ZO9aJ2Y9vHDF79JYFRSIXGzdNCzfQkdwaB2frk4hPw/exec';
+    const DEMO_TEMPLATE_ID = 'tienda-plantilla-demo';
+
+    // Credenciales por defecto del administrador (modificables desde Ajustes en el panel)
+    const DEFAULT_ADMIN_CREDS = {
+      user: 'admin',
+      pass: 'tresarroyos2026',
+      monthlyFee: 5000
+    };
+
+    const ALL_RUBROS = [
+      'Comida',
+      'Dulces',
+      'Ropa y Calzado',
+      'Belleza',
+      'Hogar y Deco',
+      'Regalos y Artesanías',
+      'Mascotas',
+      'Otros'
+    ];
+
+    const ALL_BARRIOS = [
+      'Centro',
+      'La Cañada',
+      'Cooperativa',
+      'Ranchos',
+      'Villa Italia',
+      'Otros'
+    ];
+
+    function normalizeKey(str) {
+      return String(str || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '');
+    }
+
+    function getFieldInsensitive(row, ...candidateKeys) {
+      if (!row || typeof row !== 'object') return undefined;
+      for (const k of candidateKeys) {
+        if (row[k] !== undefined && row[k] !== null && row[k] !== '') {
+          return row[k];
+        }
+      }
+      const normalizedMap = {};
+      Object.keys(row).forEach(actualKey => {
+        const nk = normalizeKey(actualKey);
+        if (!(nk in normalizedMap) && row[actualKey] !== undefined && row[actualKey] !== null && row[actualKey] !== '') {
+          normalizedMap[nk] = row[actualKey];
+        }
+      });
+      for (const k of candidateKeys) {
+        const nk = normalizeKey(k);
+        if (nk in normalizedMap) {
+          return normalizedMap[nk];
+        }
+      }
+      return undefined;
+    }
+
+    function fixDriveImageUrl(url) {
+      if (!url || typeof url !== 'string') return url;
+      const trimmed = url.trim();
+      if (trimmed.startsWith('data:image/')) return trimmed;
+      const matchId = trimmed.match(/(?:drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:export=view&)?id=|thumbnail\?id=))([a-zA-Z0-9_-]+)/);
+      if (matchId && matchId[1]) {
+        return `https://drive.google.com/thumbnail?id=${matchId[1]}&sz=w1000`;
+      }
+      return trimmed;
+    }
+
+    function makeSvgFallbackDataUri(label = 'Mercado Tres Arroyos', bgHex = '#1A2A44') {
+      const safeLabel = String(label || 'Tres Arroyos').slice(0, 26).replace(/[<>&"]/g, '');
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><rect width="800" height="600" fill="${bgHex}"/><circle cx="400" cy="245" r="78" fill="#ffffff" fill-opacity="0.14"/><text x="400" y="262" text-anchor="middle" fill="#ffffff" font-family="Inter,Arial,sans-serif" font-size="44" font-weight="800">TA</text><text x="400" y="385" text-anchor="middle" fill="#ffffff" font-family="Inter,Arial,sans-serif" font-size="28" font-weight="700">${safeLabel}</text><text x="400" y="425" text-anchor="middle" fill="#ffffff" fill-opacity="0.75" font-family="Inter,Arial,sans-serif" font-size="18">Tres Arroyos · Comprá local</text></svg>`;
+      return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+    }
+
+    const SAMPLE_FALLBACK_PHOTO = makeSvgFallbackDataUri('Mercado Tres Arroyos', '#1A2A44');
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function formatARS(num) {
+      const n = Number(num) || 0;
+      return '$' + Math.round(n).toLocaleString('es-AR');
+    }
+
+    function slugify(text) {
+      return String(text || 'tienda')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'tienda-' + Date.now();
+    }
+
+    function normalizeWhatsAppPhone(raw) {
+      const digits = String(raw || '').replace(/\D/g, '');
+      if (!digits) return SUPPORT_WHATSAPP;
+      if (digits.startsWith('549')) return digits;
+      if (digits.startsWith('54')) return '549' + digits.slice(2);
+      if (digits.length === 10) return '549' + digits;
+      return digits;
+    }
+
+    function buildWhatsAppLink(phone, message) {
+      const cleanPhone = normalizeWhatsAppPhone(phone);
+      return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    }
+
+    function openWhatsAppUrl(phone, message) {
+      window.open(buildWhatsAppLink(phone, message), '_blank', 'noopener,noreferrer');
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+      const toast = document.createElement('div');
+      const bgMap = {
+        success: 'bg-[#2E7D32] text-white',
+        error: 'bg-[#E53935] text-white',
+        info: 'bg-[#1A2A44] text-white'
+      };
+      toast.className = `pointer-events-auto px-4 py-3 rounded-xl shadow-lg text-sm font-semibold transition-all ${bgMap[type] || bgMap.info}`;
+      toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 220);
+      }, 3200);
+    }
+
+    function renderSafeImage(src, alt, className = '', fallbackDataUri = SAMPLE_FALLBACK_PHOTO) {
+      const fixed = fixDriveImageUrl(src);
+      const cleanSrc = (fixed && String(fixed).trim()) ? String(fixed).trim() : fallbackDataUri;
+      const safeFb = fallbackDataUri || SAMPLE_FALLBACK_PHOTO;
+      return `
+        <img
+          src="${escapeHtml(cleanSrc)}"
+          alt="${escapeHtml(alt || 'Mercado Tres Arroyos')}"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+          class="w-full h-full object-cover ${className}"
+          onerror="if(this.dataset.fbDone!=='1'){this.dataset.fbDone='1';this.src='${escapeHtml(safeFb)}';}"
+        />
+      `;
+    }
+
+    function readImageFileAsDataUrl(file, maxWidth = 360, quality = 0.45) {
+      return new Promise((resolve, reject) => {
+        if (!file || !file.type.startsWith('image/')) {
+          reject(new Error('Seleccioná un archivo de imagen válido.'));
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              let w = img.width;
+              let h = img.height;
+              if (w > maxWidth) {
+                h = Math.round((h * maxWidth) / w);
+                w = maxWidth;
+              }
+              canvas.width = w;
+              canvas.height = h;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, w, h);
+              resolve(canvas.toDataURL('image/jpeg', quality));
+            } catch (_) {
+              resolve(ev.target.result);
+            }
+          };
+          img.onerror = () => resolve(ev.target.result);
+          img.src = ev.target.result;
+        };
+        reader.onerror = () => reject(new Error('No se pudo leer la foto.'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // ==================== ESTADO Y PERSISTENCIA ====================
+    function loadAdminCreds() {
+      try {
+        const raw = localStorage.getItem(ADMIN_AUTH_KEY);
+        if (!raw) return { ...DEFAULT_ADMIN_CREDS };
+        const parsed = JSON.parse(raw);
+        return {
+          user: parsed.user || DEFAULT_ADMIN_CREDS.user,
+          pass: parsed.pass || DEFAULT_ADMIN_CREDS.pass,
+          monthlyFee: Number(parsed.monthlyFee) || DEFAULT_ADMIN_CREDS.monthlyFee
+        };
+      } catch (_) {
+        return { ...DEFAULT_ADMIN_CREDS };
+      }
+    }
+
+    function saveAdminCreds(creds) {
+      try {
+        localStorage.setItem(ADMIN_AUTH_KEY, JSON.stringify(creds));
+      } catch (_) {}
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.tiendas)) {
+            return {
+              tiendas: parsed.tiendas,
+              productos: Array.isArray(parsed.productos) ? parsed.productos : [],
+              ofertas: Array.isArray(parsed.ofertas) ? parsed.ofertas : [],
+              resenas: Array.isArray(parsed.resenas) ? parsed.resenas : [],
+              pedidos: Array.isArray(parsed.pedidos) ? parsed.pedidos : [],
+              carrito: Array.isArray(parsed.carrito) ? parsed.carrito : [],
+              favoritos: Array.isArray(parsed.favoritos) ? parsed.favoritos : [],
+              misPedidosCliente: Array.isArray(parsed.misPedidosCliente) ? parsed.misPedidosCliente : []
+            };
+          }
+        }
+      } catch (_) {}
+
+      return {
+        tiendas: [],
+        productos: [],
+        ofertas: [],
+        resenas: [],
+        pedidos: [],
+        carrito: [],
+        favoritos: [],
+        misPedidosCliente: []
+      };
+    }
+
+    function saveState(stateObj) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateObj));
+      } catch (err) {
+        console.warn('Error guardando estado:', err);
+      }
+    }
+
+    let adminCreds = loadAdminCreds();
+    let db = loadState();
+
+    const adminUi = {
+      authenticated: sessionStorage.getItem('admin_ta_logged_in') === '1',
+      tab: 'RESUMEN', // RESUMEN | TIENDAS | OFERTAS | RESENAS | PEDIDOS | AJUSTES
+      storeSearch: '',
+      storePlanFilter: 'TODOS', // TODOS | ACTIVA | PRUEBA | VENCIDA | PAUSADA
+      offerStoreFilter: 'TODAS',
+      orderStatusFilter: 'Todos',
+      editingStoreId: null,
+      storeFormDraft: null,
+      offerFormDraft: null
+    };
+
+    // ==================== GOOGLE SHEETS SYNC ====================
+    function parseBool(val, fallback = false) {
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'number') return val !== 0;
+      if (typeof val === 'string') {
+        const s = val.trim().toLowerCase();
+        if (s === 'true' || s === '1' || s === 'sí' || s === 'si') return true;
+        if (s === 'false' || s === '0' || s === 'no') return false;
+      }
+      return fallback;
+    }
+
+    function parseListField(val, fallback = []) {
+      if (Array.isArray(val)) return val;
+      if (typeof val === 'string' && val.trim()) {
+        try {
+          const parsed = JSON.parse(val);
+          if (Array.isArray(parsed)) return parsed;
+        } catch (_) {}
+        return val.split(',').map(s => s.trim()).filter(Boolean);
+      }
+      return fallback;
+    }
+
+    function normalizeSheetStore(row) {
+      const rawId = getFieldInsensitive(row, 'ID', 'id');
+      const rawNombre = getFieldInsensitive(row, 'Nombre', 'nombre', 'Tienda', 'tienda');
+      if (!rawId && !rawNombre) return null;
+      const nombre = String(rawNombre || 'Tienda local').trim();
+      const id = String(rawId || ('tienda-' + slugify(nombre))).trim();
+      const estadoRaw = String(getFieldInsensitive(row, 'Estado Plan', 'Estado', 'estadoSuscripcion', 'estado') || 'ACTIVA').trim().toUpperCase();
+      const envioRaw = getFieldInsensitive(row, 'Envío', 'Envio', 'envio', 'haceEnvios');
+      const metodosRaw = getFieldInsensitive(row, 'Métodos pago', 'Metodos pago', 'MetodosPago', 'metodosPago');
+      const fechaRaw = getFieldInsensitive(row, 'Fecha registro', 'FechaRegistro', 'fechaRegistro');
+      const passRaw = getFieldInsensitive(row, 'Contraseña', 'Contrasena', 'password', 'Clave');
+
+      return {
+        id,
+        slug: String(getFieldInsensitive(row, 'Slug', 'slug') || slugify(nombre)),
+        nombre,
+        dueno: String(getFieldInsensitive(row, 'Dueño', 'Dueno', 'dueno') || nombre).trim(),
+        email: String(getFieldInsensitive(row, 'Email', 'email', 'Correo') || '').trim().toLowerCase(),
+        password: passRaw !== undefined && passRaw !== null ? String(passRaw).replace(/^'/, '').trim() : '123456',
+        esPlantillaDemo: id === DEMO_TEMPLATE_ID,
+        rubro: String(getFieldInsensitive(row, 'Rubro', 'rubro') || 'Otros').trim(),
+        barrio: String(getFieldInsensitive(row, 'Barrio', 'barrio') || 'Centro').trim(),
+        direccion: String(getFieldInsensitive(row, 'Dirección', 'Direccion', 'direccion') || '').trim(),
+        whatsapp: String(getFieldInsensitive(row, 'WhatsApp', 'Whatsapp', 'whatsapp', 'Telefono') || '').trim(),
+        instagram: String(getFieldInsensitive(row, 'Instagram', 'instagram') || '').trim(),
+        logo: fixDriveImageUrl(String(getFieldInsensitive(row, 'Logo', 'logo') || '').trim()) || makeSvgFallbackDataUri(nombre, '#1A2A44'),
+        portada: fixDriveImageUrl(String(getFieldInsensitive(row, 'Portada', 'portada') || '').trim()) || makeSvgFallbackDataUri(nombre, '#2E7D32'),
+        descripcion: String(getFieldInsensitive(row, 'Descripción', 'Descripcion', 'descripcion') || '').trim(),
+        antiguedadTexto: String(getFieldInsensitive(row, 'Antiguedad', 'Antigüedad', 'antiguedadTexto') || 'En Tres Arroyos').trim(),
+        rating: Number(getFieldInsensitive(row, 'Rating', 'rating')) || 4.9,
+        reviewCount: Number(getFieldInsensitive(row, 'ReseñasCount', 'ResenasCount', 'reviewCount')) || 0,
+        fiveStarCount: Number(getFieldInsensitive(row, 'FiveStarCount', 'fiveStarCount')) || 0,
+        salesCount: Number(getFieldInsensitive(row, 'Ventas', 'salesCount')) || 1,
+        verificado: parseBool(getFieldInsensitive(row, 'Verificado', 'verificado'), false),
+        abiertoAhora: parseBool(getFieldInsensitive(row, 'Abierto', 'abierto', 'abiertoAhora'), true),
+        horarioTexto: String(getFieldInsensitive(row, 'Horarios', 'horarioTexto') || 'Lun a Sáb 9 a 20').trim(),
+        haceEnvios: parseBool(envioRaw, true),
+        envioHoy: parseBool(envioRaw, true),
+        precioEnvio: Number(getFieldInsensitive(row, 'PrecioEnvio', 'precioEnvio')) || 1500,
+        envioGratisDesde: Number(getFieldInsensitive(row, 'EnvioGratisDesde', 'envioGratisDesde')) || 0,
+        aceptaEncargo: parseBool(getFieldInsensitive(row, 'AceptaEncargo', 'aceptaEncargo'), false),
+        metodosPago: parseListField(metodosRaw, ['Efectivo', 'Transferencia']),
+        estadoSuscripcion: estadoRaw || 'ACTIVA',
+        fechaRegistro: String(fechaRaw || new Date().toISOString().split('T')[0])
+      };
+    }
+
+    function normalizeSheetProduct(row) {
+      const rawId = getFieldInsensitive(row, 'ID', 'id');
+      const rawNombre = getFieldInsensitive(row, 'Nombre', 'nombre', 'Producto');
+      if (!rawId && !rawNombre) return null;
+      const nombre = String(rawNombre || 'Producto').trim();
+      const id = String(rawId || ('prod-' + slugify(nombre))).trim();
+      const tiendaId = String(getFieldInsensitive(row, 'TiendaID', 'tiendaId', 'tienda_id') || '').trim();
+      const rawFotos = parseListField(getFieldInsensitive(row, 'Fotos', 'fotos', 'Foto'), []).map(fixDriveImageUrl);
+      const fotos = rawFotos.length > 0 ? rawFotos : [makeSvgFallbackDataUri(nombre, '#1A2A44')];
+      const precio = Number(getFieldInsensitive(row, 'Precio', 'precio')) || 0;
+      const rawOffer = getFieldInsensitive(row, 'Precio oferta', 'PrecioOferta', 'precioOferta');
+      const precioOferta = rawOffer !== '' && rawOffer !== null && rawOffer !== undefined && Number(rawOffer) > 0
+        ? Number(rawOffer)
+        : null;
+
+      return {
+        id,
+        tiendaId,
+        nombre,
+        precio,
+        precioOferta,
+        esNuevo: parseBool(getFieldInsensitive(row, 'Nuevo', 'nuevo', 'esNuevo'), false),
+        stockDisponible: parseBool(getFieldInsensitive(row, 'Stock', 'stock', 'stockDisponible'), true),
+        cantidadStock: Number(getFieldInsensitive(row, 'Cantidad', 'cantidad')) || null,
+        categoria: String(getFieldInsensitive(row, 'Categoría', 'Categoria', 'categoria') || 'Otros').trim(),
+        descripcion: String(getFieldInsensitive(row, 'Descripción', 'Descripcion', 'descripcion') || '').trim(),
+        fotos
+      };
+    }
+
+    function mergeSheetDataIntoState(payload) {
+      if (!payload || typeof payload !== 'object') return false;
+      const data = payload.data && typeof payload.data === 'object' ? payload.data : payload;
+      const sheetStoresRaw = getFieldInsensitive(data, 'Tiendas', 'tiendas');
+      const sheetProdsRaw = getFieldInsensitive(data, 'Productos', 'productos');
+      const sheetOffersRaw = getFieldInsensitive(data, 'Ofertas', 'ofertas');
+      const sheetReviewsRaw = getFieldInsensitive(data, 'Reseñas', 'Resenas', 'resenas');
+      const sheetOrdersRaw = getFieldInsensitive(data, 'Pedidos', 'pedidos');
+
+      let changed = false;
+
+      if (Array.isArray(sheetStoresRaw) && sheetStoresRaw.length > 0) {
+        const normalizedStores = sheetStoresRaw.map(normalizeSheetStore).filter(Boolean);
+        if (normalizedStores.length > 0) {
+          const byId = new Map();
+          db.tiendas.forEach(s => byId.set(s.id, s));
+          normalizedStores.forEach(s => {
+            const prev = byId.get(s.id);
+            byId.set(s.id, { ...(prev || {}), ...s, password: s.password || (prev && prev.password) || '123456' });
+          });
+          db.tiendas = Array.from(byId.values());
+          changed = true;
+        }
+      }
+
+      if (Array.isArray(sheetProdsRaw) && sheetProdsRaw.length > 0) {
+        const normalizedProds = sheetProdsRaw.map(normalizeSheetProduct).filter(Boolean);
+        if (normalizedProds.length > 0) {
+          const byProdId = new Map();
+          db.productos.forEach(p => byProdId.set(p.id, p));
+          normalizedProds.forEach(p => byProdId.set(p.id, p));
+          db.productos = Array.from(byProdId.values());
+          changed = true;
+        }
+      }
+
+      if (Array.isArray(sheetOffersRaw) && sheetOffersRaw.length > 0) {
+        db.ofertas = sheetOffersRaw.map((o, idx) => ({
+          id: String(getFieldInsensitive(o, 'ID', 'id') || ('of-sheet-' + idx)),
+          productoId: String(getFieldInsensitive(o, 'ProductoID', 'productoId', 'Producto') || ''),
+          tiendaId: String(getFieldInsensitive(o, 'TiendaID', 'tiendaId') || ''),
+          precioOferta: Number(getFieldInsensitive(o, 'Precio oferta', 'PrecioOferta', 'precioOferta')) || 0,
+          hastaCuando: Number(getFieldInsensitive(o, 'Hasta cuándo', 'Hasta cuando', 'HastaCuando', 'hastaCuando')) || (Date.now() + 4 * 60 * 60 * 1000),
+          destacada: parseBool(getFieldInsensitive(o, 'Destacada', 'destacada'), false)
+        })).filter(o => o.productoId && o.precioOferta > 0);
+        changed = true;
+      }
+
+      if (Array.isArray(sheetReviewsRaw) && sheetReviewsRaw.length > 0) {
+        const byRevId = new Map();
+        db.resenas.forEach(r => byRevId.set(r.id, r));
+        sheetReviewsRaw.forEach((r, idx) => {
+          const id = String(getFieldInsensitive(r, 'ID', 'id') || ('rev-sh-' + idx));
+          const cliente = String(getFieldInsensitive(r, 'Cliente', 'cliente') || 'Vecino').trim();
+          byRevId.set(id, {
+            id,
+            tiendaId: String(getFieldInsensitive(r, 'TiendaID', 'tiendaId') || ''),
+            cliente,
+            avatar: makeSvgFallbackDataUri(cliente, '#1A2A44'),
+            fecha: String(getFieldInsensitive(r, 'Fecha', 'fecha') || 'Hoy'),
+            estrellas: Number(getFieldInsensitive(r, 'Estrellas', 'estrellas')) || 5,
+            comentario: String(getFieldInsensitive(r, 'Comentario', 'comentario') || ''),
+            fotoProducto: fixDriveImageUrl(String(getFieldInsensitive(r, 'Foto', 'foto', 'fotoProducto') || ''))
+          });
+        });
+        db.resenas = Array.from(byRevId.values());
+        changed = true;
+      }
+
+      if (Array.isArray(sheetOrdersRaw) && sheetOrdersRaw.length > 0) {
+        const byOrderId = new Map();
+        db.pedidos.forEach(o => byOrderId.set(o.id, o));
+        sheetOrdersRaw.forEach((ord, idx) => {
+          const id = String(getFieldInsensitive(ord, 'ID', 'id') || ('PED-SH-' + (1000 + idx)));
+          byOrderId.set(id, {
+            id,
+            tiendaId: String(getFieldInsensitive(ord, 'TiendaID', 'tiendaId') || ''),
+            cliente: String(getFieldInsensitive(ord, 'Cliente', 'cliente') || 'Cliente'),
+            barrio: String(getFieldInsensitive(ord, 'Barrio', 'barrio') || 'Centro'),
+            direccion: String(getFieldInsensitive(ord, 'Dirección', 'Direccion', 'direccion') || ''),
+            nota: String(getFieldInsensitive(ord, 'Nota', 'nota') || ''),
+            fecha: String(getFieldInsensitive(ord, 'Fecha', 'fecha') || 'Hoy'),
+            estado: String(getFieldInsensitive(ord, 'Estado', 'estado') || 'Nuevo'),
+            esNuevoNoVisto: false,
+            total: Number(getFieldInsensitive(ord, 'Total', 'total')) || 0,
+            items: parseListField(getFieldInsensitive(ord, 'Productos', 'productos', 'items'), [])
+          });
+        });
+        db.pedidos = Array.from(byOrderId.values());
+        changed = true;
+      }
+
+      if (changed) saveState(db);
+      return changed;
+    }
+
+    async function fetchSheetData(notifyUser = false) {
+      if (!SHEET_WEBAPP_URL) return false;
+      try {
+        const sep = SHEET_WEBAPP_URL.includes('?') ? '&' : '?';
+        const res = await fetch(`${SHEET_WEBAPP_URL}${sep}action=getAll&incluirPedidos=1&t=${Date.now()}`, {
+          method: 'GET',
+          cache: 'no-store'
+        });
+        if (!res.ok) {
+          if (notifyUser) showToast('No se pudo conectar con Google Sheets.', 'error');
+          return false;
+        }
+        const json = await res.json();
+        const updated = mergeSheetDataIntoState(json);
+        if (updated) {
+          render();
+          if (notifyUser) showToast('Datos sincronizados con Google Sheets.', 'success');
+        } else if (notifyUser) {
+          showToast('Conectado con Google Sheets.', 'info');
+        }
+        return updated;
+      } catch (_) {
+        if (notifyUser) showToast('Error al sincronizar con Google Sheets.', 'error');
+        return false;
+      }
+    }
+
+    async function pushToSheet(entity, record, action = 'upsert') {
+      if (!SHEET_WEBAPP_URL) return false;
+      try {
+        await fetch(SHEET_WEBAPP_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action,
+            entity,
+            timestamp: new Date().toISOString(),
+            data: record
+          })
+        });
+        return true;
+      } catch (err) {
+        console.warn('Error enviando a Sheet:', err);
+        return false;
+      }
+    }
+
+    function syncStoreToSheet(storeObj, action = 'upsert') {
+      if (action === 'delete') {
+        return pushToSheet('Tiendas', { ID: storeObj.id || storeObj }, 'delete');
+      }
+      return pushToSheet('Tiendas', {
+        ID: storeObj.id,
+        Nombre: storeObj.nombre,
+        Rubro: storeObj.rubro,
+        Barrio: storeObj.barrio,
+        WhatsApp: storeObj.whatsapp,
+        Logo: storeObj.logo,
+        Portada: storeObj.portada,
+        'Descripción': storeObj.descripcion,
+        Horarios: storeObj.horarioTexto,
+        'Envío': storeObj.haceEnvios,
+        Estado: storeObj.estadoSuscripcion || 'ACTIVA',
+        'Fecha registro': storeObj.fechaRegistro || new Date().toISOString().split('T')[0],
+        Verificado: Boolean(storeObj.verificado),
+        Email: storeObj.email || '',
+        'Contraseña': storeObj.password || '123456',
+        Instagram: storeObj.instagram || '',
+        'Dirección': storeObj.direccion || '',
+        'Métodos pago': storeObj.metodosPago || ['Efectivo', 'Transferencia']
+      }, action);
+    }
+
+    function syncOfferToSheet(offerObj, action = 'upsert') {
+      if (action === 'delete') {
+        return pushToSheet('Ofertas', { ID: offerObj.id || offerObj }, 'delete');
+      }
+      return pushToSheet('Ofertas', {
+        ID: offerObj.id,
+        ProductoID: offerObj.productoId,
+        TiendaID: offerObj.tiendaId || '',
+        'Precio oferta': offerObj.precioOferta,
+        'Hasta cuándo': offerObj.hastaCuando || '',
+        Destacada: Boolean(offerObj.destacada)
+      }, action);
+    }
+
+    function syncOrderToSheet(orderObj, action = 'upsert') {
+      return pushToSheet('Pedidos', {
+        ID: orderObj.id,
+        TiendaID: orderObj.tiendaId,
+        Cliente: orderObj.cliente,
+        Productos: orderObj.items || [],
+        Total: orderObj.total || 0,
+        Fecha: orderObj.fecha || new Date().toISOString(),
+        Estado: orderObj.estado || 'Nuevo',
+        Barrio: orderObj.barrio || 'Centro',
+        'Dirección': orderObj.direccion || '',
+        Nota: orderObj.nota || ''
+      }, action);
+    }
+
+    function syncReviewToSheet(revObj, action = 'delete') {
+      return pushToSheet('Reseñas', { ID: revObj.id || revObj }, action);
+    }
+
+    // ==================== PANTALLA DE ACCESO ADMIN ====================
+    function renderAdminLogin() {
+      return `
+        <div class="min-h-screen flex items-center justify-center bg-[#1A2A44] p-4">
+          <div class="w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 sm:p-8">
+            <div class="flex items-center justify-between gap-2 mb-4">
+              <span class="px-3 py-1 rounded-full bg-slate-100 text-[#1A2A44] text-xs font-extrabold uppercase tracking-wider">
+                Administración
+              </span>
+              <a href="index.html" class="text-xs font-bold text-[#666666] hover:text-[#1A2A44]">
+                ← Volver a la tienda
+              </a>
+            </div>
+
+            <h1 class="font-extrabold text-2xl text-[#1A2A44]">Mercado Tres Arroyos</h1>
+            <p class="text-sm text-[#666666] mt-1">
+              Ingresá tus credenciales para administrar tiendas, planes, ofertas, reseñas y pedidos.
+            </p>
+
+            <form id="admin-login-form" class="mt-6 space-y-4">
+              <div>
+                <label class="block text-xs font-bold text-[#111111] mb-1">Usuario</label>
+                <input id="adm-user-input" type="text" required autocomplete="username" placeholder="admin" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm font-semibold outline-none focus:border-[#1A2A44]" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-[#111111] mb-1">Contraseña</label>
+                <input id="adm-pass-input" type="password" required autocomplete="current-password" placeholder="••••••••" class="w-full min-h-[48px] px-4 rounded-xl border border-slate-300 text-sm font-semibold outline-none focus:border-[#1A2A44]" />
+              </div>
+              <button type="submit" class="w-full min-h-[52px] rounded-xl bg-[#1A2A44] hover:bg-[#111111] text-white font-extrabold text-sm transition-colors">
+                Ingresar al panel
+              </button>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    // ==================== HEADER Y NAVEGACIÓN ADMIN ====================
+    function renderAdminHeader() {
+      const tabs = [
+        { id: 'RESUMEN', label: '📊 Resumen' },
+        { id: 'TIENDAS', label: `🏪 Tiendas (${db.tiendas.length})` },
+        { id: 'OFERTAS', label: `🔥 Ofertas (${db.ofertas.length})` },
+        { id: 'RESENAS', label: `⭐ Reseñas (${db.resenas.length})` },
+        { id: 'PEDIDOS', label: `🧾 Pedidos (${db.pedidos.length})` },
+        { id: 'AJUSTES', label: '🔐 Ajustes' }
+      ];
+
+      return `
+        <header class="sticky top-0 z-40 bg-[#1A2A44] text-white border-b border-white/10 shadow-sm">
+          <div class="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-9 h-9 rounded-xl bg-[#25D366] text-white font-extrabold flex items-center justify-center text-sm shrink-0">
+                ⚙️
+              </div>
+              <div class="min-w-0">
+                <div class="font-extrabold text-sm sm:text-base tracking-tight truncate">PANEL ADMIN · MERCADO TA</div>
+                <div class="text-[11px] text-white/70 hidden sm:block truncate">Gestión local + Google Sheets</div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 shrink-0">
+              <button type="button" onclick="fetchSheetData(true)" class="min-h-[38px] px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold flex items-center gap-1.5">
+                <span>🔄</span>
+                <span class="hidden sm:inline">Sincronizar</span>
+              </button>
+              <a href="index.html" class="min-h-[38px] px-3 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#1EB956] text-white text-xs font-extrabold flex items-center gap-1">
+                <span>Ver tienda</span>
+              </a>
+              <button type="button" onclick="adminLogout()" class="min-h-[38px] px-3 py-1.5 rounded-xl border border-white/25 hover:bg-white/10 text-xs font-bold">
+                Salir
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-white text-[#111111] border-b border-slate-200 px-3 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto no-scrollbar">
+            <div class="max-w-7xl mx-auto w-full flex items-center gap-2">
+              ${tabs.map(t => {
+                const active = adminUi.tab === t.id;
+                return `
+                  <button
+                    type="button"
+                    onclick="adminUi.tab = '${t.id}'; render();"
+                    class="min-h-[40px] px-4 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap shrink-0 transition-colors ${active ? 'bg-[#1A2A44] text-white' : 'bg-slate-100 hover:bg-slate-200 text-[#111111]'}"
+                  >
+                    ${t.label}
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </header>
+      `;
+    }
+
+    // ==================== PESTAÑA 1: RESUMEN ====================
+    function renderTabResumen() {
+      const totalStores = db.tiendas.length;
+      const activeStores = db.tiendas.filter(s => {
+        const st = String(s.estadoSuscripcion || 'ACTIVA').toUpperCase();
+        return st === 'ACTIVA' || st === 'PRUEBA';
+      });
+      const expiredStores = db.tiendas.filter(s => {
+        const st = String(s.estadoSuscripcion || '').toUpperCase();
+        return st === 'VENCIDA' || st === 'VENCIDO' || st === 'PAUSADA' || st === 'SUSPENDIDA';
+      });
+      const totalProducts = db.productos.length;
+      const activeOffers = db.ofertas.length;
+      const estimatedMRR = activeStores.length * (Number(adminCreds.monthlyFee) || 5000);
+
+      return `
+        <div class="space-y-6">
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
+              <div class="text-xs font-bold text-[#666666]">Tiendas registradas</div>
+              <div class="text-2xl sm:text-3xl font-extrabold text-[#1A2A44] mt-1">${totalStores}</div>
+              <div class="text-xs font-semibold text-[#2E7D32] mt-1">${activeStores.length} activas / prueba</div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
+              <div class="text-xs font-bold text-[#666666]">Suscripciones por cobrar</div>
+              <div class="text-2xl sm:text-3xl font-extrabold ${expiredStores.length > 0 ? 'text-[#E53935]' : 'text-[#111111]'} mt-1">${expiredStores.length}</div>
+              <div class="text-xs text-[#666666] mt-1">Vencidas o pausadas</div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
+              <div class="text-xs font-bold text-[#666666]">Productos & Ofertas</div>
+              <div class="text-2xl sm:text-3xl font-extrabold text-[#111111] mt-1">${totalProducts}</div>
+              <div class="text-xs font-bold text-[#E53935] mt-1">${activeOffers} ofertas activas</div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5">
+              <div class="text-xs font-bold text-[#666666]">Ingreso mensual estimado</div>
+              <div class="text-2xl sm:text-3xl font-extrabold text-[#2E7D32] mt-1">${formatARS(estimatedMRR)}</div>
+              <div class="text-xs text-[#666666] mt-1">Cuota base: ${formatARS(adminCreds.monthlyFee)}</div>
+            </div>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 class="font-extrabold text-base text-[#1A2A44]">Acciones rápidas de administración</h2>
+              <p class="text-xs text-[#666666] mt-0.5">Creá tiendas nuevas, cargá fotos desde galería, activá planes o destacá ofertas del día.</p>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <button type="button" onclick="openCreateStoreModal()" class="min-h-[44px] px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#1EB956] text-white text-xs font-extrabold">
+                + Nueva tienda
+              </button>
+              <button type="button" onclick="adminUi.tab = 'TIENDAS'; render();" class="min-h-[44px] px-4 py-2 rounded-xl bg-[#1A2A44] text-white text-xs font-bold">
+                Gestionar tiendas
+              </button>
+              <button type="button" onclick="adminUi.tab = 'OFERTAS'; render();" class="min-h-[44px] px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#111111] text-xs font-bold">
+                Gestionar ofertas
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-2xl p-5">
+            <h3 class="font-extrabold text-sm uppercase tracking-wider text-[#1A2A44] mb-3">Estado de suscripciones recientes</h3>
+            <div class="divide-y divide-slate-100">
+              ${db.tiendas.slice(0, 8).map(st => {
+                const plan = String(st.estadoSuscripcion || 'ACTIVA').toUpperCase();
+                const badgeClass = (plan === 'ACTIVA' || plan === 'PRUEBA')
+                  ? 'bg-emerald-50 text-[#2E7D32]'
+                  : 'bg-red-50 text-[#E53935]';
+                return `
+                  <div class="py-3 flex items-center justify-between gap-3 text-xs sm:text-sm">
+                    <div class="flex items-center gap-3 min-w-0">
+                      <div class="w-10 h-10 rounded-full overflow-hidden bg-slate-100 shrink-0">
+                        ${renderSafeImage(st.logo, st.nombre)}
+                      </div>
+                      <div class="min-w-0">
+                        <div class="font-bold text-[#111111] truncate">${escapeHtml(st.nombre)}</div>
+                        <div class="text-xs text-[#666666] truncate">${escapeHtml(st.rubro)} · ${escapeHtml(st.barrio)} · ${escapeHtml(st.whatsapp || '')}</div>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                      <span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold ${badgeClass}">${escapeHtml(plan)}</span>
+                      <button type="button" onclick="openEditStoreModal('${st.id}')" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold">
+                        Editar
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ==================== PESTAÑA 2: TIENDAS Y SUSCRIPCIONES ====================
+    function renderTabTiendas() {
+      const q = (adminUi.storeSearch || '').trim().toLowerCase();
+      const filtered = db.tiendas.filter(st => {
+        const plan = String(st.estadoSuscripcion || 'ACTIVA').toUpperCase();
+        if (adminUi.storePlanFilter !== 'TODOS') {
+          if (adminUi.storePlanFilter === 'VENCIDA') {
+            if (!['VENCIDA', 'VENCIDO', 'PAUSADA', 'SUSPENDIDA'].includes(plan)) return false;
+          } else if (plan !== adminUi.storePlanFilter) {
+            return false;
+          }
+        }
+        if (!q) return true;
+        return (st.nombre || '').toLowerCase().includes(q) ||
+          (st.rubro || '').toLowerCase().includes(q) ||
+          (st.barrio || '').toLowerCase().includes(q) ||
+          (st.email || '').toLowerCase().includes(q) ||
+          (st.whatsapp || '').toLowerCase().includes(q);
+      });
+
+      return `
+        <div class="space-y-5">
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div class="flex flex-col sm:flex-row gap-2.5 flex-1">
+              <input
+                type="search"
+                value="${escapeHtml(adminUi.storeSearch)}"
+                oninput="adminUi.storeSearch = this.value; render();"
+                placeholder="Buscar tienda por nombre, rubro, barrio, email o WhatsApp..."
+                class="flex-1 min-h-[44px] px-3.5 rounded-xl border border-slate-300 text-sm outline-none focus:border-[#1A2A44]"
+              />
+              <select onchange="adminUi.storePlanFilter = this.value; render();" class="min-h-[44px] px-3.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold">
+                <option value="TODOS" ${adminUi.storePlanFilter === 'TODOS' ? 'selected' : ''}>Todos los estados</option>
+                <option value="ACTIVA" ${adminUi.storePlanFilter === 'ACTIVA' ? 'selected' : ''}>ACTIVA</option>
+                <option value="PRUEBA" ${adminUi.storePlanFilter === 'PRUEBA' ? 'selected' : ''}>PRUEBA</option>
+                <option value="VENCIDA" ${adminUi.storePlanFilter === 'VENCIDA' ? 'selected' : ''}>VENCIDA / PAUSADA</option>
+              </select>
+            </div>
+            <button type="button" onclick="openCreateStoreModal()" class="min-h-[44px] px-4 py-2 rounded-xl bg-[#25D366] hover:bg-[#1EB956] text-white text-xs font-extrabold shrink-0">
+              + Crear nueva tienda
+            </button>
+          </div>
+
+          <div class="space-y-3">
+            ${filtered.length > 0 ? filtered.map(st => {
+              const plan = String(st.estadoSuscripcion || 'ACTIVA').toUpperCase();
+              const isActivePlan = plan === 'ACTIVA' || plan === 'PRUEBA';
+              const prodCount = db.productos.filter(p => p.tiendaId === st.id).length;
+              const reminderMsg = `Hola ${st.nombre}, te escribimos desde Mercado Tres Arroyos por la renovación de tu plan (${formatARS(adminCreds.monthlyFee)}/mes). ¿Querés que te pasemos los datos de pago?`;
+
+              return `
+                <article class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div class="flex items-start sm:items-center gap-3.5 min-w-0">
+                    <div class="w-14 h-14 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                      ${renderSafeImage(st.logo, st.nombre)}
+                    </div>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <h3 class="font-extrabold text-base text-[#111111] truncate">${escapeHtml(st.nombre)}</h3>
+                        <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold ${isActivePlan ? 'bg-emerald-50 text-[#2E7D32]' : 'bg-red-50 text-[#E53935]'}">
+                          ${escapeHtml(plan)}
+                        </span>
+                        ${st.verificado ? `<span class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-extrabold">✓ Verificada</span>` : ''}
+                        <span class="text-xs text-[#666666]">· ${prodCount} prod.</span>
+                      </div>
+                      <div class="text-xs text-[#666666] mt-0.5 flex flex-wrap gap-x-2">
+                        <span><strong>${escapeHtml(st.rubro)}</strong></span>
+                        <span>· 📍 ${escapeHtml(st.barrio)}</span>
+                        ${st.email ? `<span>· ✉️ ${escapeHtml(st.email)}</span>` : ''}
+                        ${st.whatsapp ? `<span>· 📱 ${escapeHtml(st.whatsapp)}</span>` : ''}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <button type="button" onclick="openEditStoreModal('${st.id}')" class="min-h-[38px] px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-[#111111]">
+                      Editar
+                    </button>
+                    <button type="button" onclick="toggleStoreVerified('${st.id}')" class="min-h-[38px] px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-xs font-bold text-blue-800">
+                      ${st.verificado ? 'Quitar ✓' : 'Verificar ✓'}
+                    </button>
+                    <select onchange="changeStoreSubscriptionPlan('${st.id}', this.value)" class="min-h-[38px] px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-extrabold">
+                      <option value="ACTIVA" ${plan === 'ACTIVA' ? 'selected' : ''}>Plan: ACTIVA</option>
+                      <option value="PRUEBA" ${plan === 'PRUEBA' ? 'selected' : ''}>Plan: PRUEBA</option>
+                      <option value="VENCIDA" ${plan === 'VENCIDA' || plan === 'VENCIDO' ? 'selected' : ''}>Plan: VENCIDA</option>
+                      <option value="PAUSADA" ${plan === 'PAUSADA' ? 'selected' : ''}>Plan: PAUSADA</option>
+                    </select>
+                    <button type="button" onclick="openWhatsAppUrl('${escapeHtml(st.whatsapp)}', \`${escapeHtml(reminderMsg)}\`)" class="min-h-[38px] px-3 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#1EB956] text-white text-xs font-bold">
+                      💬 Cobro WA
+                    </button>
+                    <button type="button" onclick="deleteStoreById('${st.id}')" class="min-h-[38px] px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-xs font-bold text-[#E53935]">
+                      Borrar
+                    </button>
+                  </div>
+                </article>
+              `;
+            }).join('') : `
+              <div class="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-[#666666]">
+                No hay tiendas que coincidan con el filtro.
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    // ==================== PESTAÑA 3: OFERTAS DEL DÍA ====================
+    function renderTabOfertas() {
+      const offerProducts = db.productos.filter(p => {
+        if (adminUi.offerStoreFilter !== 'TODAS' && p.tiendaId !== adminUi.offerStoreFilter) return false;
+        const hasOff = (p.precioOferta && Number(p.precioOferta) > 0 && Number(p.precioOferta) < Number(p.precio)) ||
+          db.ofertas.some(o => o.productoId === p.id);
+        return hasOff;
+      });
+
+      const availableForOffer = db.productos.filter(p =>
+        adminUi.offerStoreFilter === 'TODAS' || p.tiendaId === adminUi.offerStoreFilter
+      );
+
+      return `
+        <div class="space-y-5">
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 class="font-extrabold text-base text-[#1A2A44]">Ofertas del Día</h2>
+              <p class="text-xs text-[#666666]">Creá, editá o quitá descuentos visibles en el inicio y en Ofertas del Día.</p>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <select onchange="adminUi.offerStoreFilter = this.value; render();" class="min-h-[42px] px-3 rounded-xl border border-slate-300 bg-white text-xs font-bold">
+                <option value="TODAS" ${adminUi.offerStoreFilter === 'TODAS' ? 'selected' : ''}>Todas las tiendas</option>
+                ${db.tiendas.map(s => `<option value="${s.id}" ${adminUi.offerStoreFilter === s.id ? 'selected' : ''}>${escapeHtml(s.nombre)}</option>`).join('')}
+              </select>
+              <button type="button" onclick="openCreateOfferModal()" class="min-h-[42px] px-4 py-2 rounded-xl bg-[#E53935] hover:bg-red-700 text-white text-xs font-extrabold">
+                + Nueva oferta
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            ${offerProducts.length > 0 ? offerProducts.map(prod => {
+              const store = db.tiendas.find(s => s.id === prod.tiendaId);
+              const offerRec = db.ofertas.find(o => o.productoId === prod.id);
+              const offerPrice = Number((offerRec && offerRec.precioOferta) || prod.precioOferta || Math.round(prod.precio * 0.8));
+              const pct = prod.precio > 0 ? Math.max(1, Math.round(((prod.precio - offerPrice) / prod.precio) * 100)) : 20;
+              const photo = (prod.fotos && prod.fotos[0]) || SAMPLE_FALLBACK_PHOTO;
+
+              return `
+                <article class="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between">
+                  <div>
+                    <div class="aspect-video w-full bg-slate-100 relative">
+                      ${renderSafeImage(photo, prod.nombre)}
+                      <span class="absolute top-2 left-2 px-2.5 py-1 rounded-md bg-[#E53935] text-white text-xs font-extrabold">-${pct}%</span>
+                    </div>
+                    <div class="p-4">
+                      <div class="text-xs font-bold text-[#666666]">${escapeHtml(store ? store.nombre : 'Tienda')}</div>
+                      <h3 class="font-extrabold text-base text-[#111111] mt-0.5">${escapeHtml(prod.nombre)}</h3>
+                      <div class="mt-2 flex items-baseline gap-2">
+                        <span class="text-xl font-extrabold text-[#E53935]">${formatARS(offerPrice)}</span>
+                        <span class="text-xs text-[#666666] line-through">${formatARS(prod.precio)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="px-4 pb-4 flex items-center gap-2">
+                    <button type="button" onclick="openEditOfferModal('${prod.id}', ${offerPrice})" class="flex-1 min-h-[40px] px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold">
+                      Editar oferta
+                    </button>
+                    <button type="button" onclick="removeProductOffer('${prod.id}')" class="min-h-[40px] px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-xs font-bold text-[#E53935]">
+                      Quitar
+                    </button>
+                  </div>
+                </article>
+              `;
+            }).join('') : `
+              <div class="md:col-span-2 lg:col-span-3 bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-[#666666]">
+                No hay ofertas activas para este filtro (${availableForOffer.length} productos disponibles en el catálogo).
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    // ==================== PESTAÑA 4: RESEÑAS ====================
+    function renderTabResenas() {
+      return `
+        <div class="space-y-4">
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <h2 class="font-extrabold text-base text-[#1A2A44]">Moderación de Reseñas</h2>
+              <p class="text-xs text-[#666666]">Revisá o eliminá reseñas publicadas por clientes.</p>
+            </div>
+            <span class="text-xs font-extrabold text-[#1A2A44]">${db.resenas.length} reseñas</span>
+          </div>
+
+          <div class="space-y-3">
+            ${db.resenas.length > 0 ? db.resenas.map(rev => {
+              const store = db.tiendas.find(s => s.id === rev.tiendaId);
+              return `
+                <article class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-extrabold text-sm text-[#111111]">${escapeHtml(rev.cliente)}</span>
+                      <span class="text-[#FFC107] font-bold text-xs">${'★'.repeat(rev.estrellas || 5)}</span>
+                      <span class="text-xs text-[#666666]">· ${escapeHtml(rev.fecha || '')}</span>
+                      <span class="px-2 py-0.5 rounded-md bg-slate-100 text-[#1A2A44] text-xs font-bold">
+                        Tienda: ${escapeHtml(store ? store.nombre : rev.tiendaId)}
+                      </span>
+                    </div>
+                    <p class="mt-1.5 text-sm text-[#111111]">${escapeHtml(rev.comentario)}</p>
+                  </div>
+                  <button type="button" onclick="deleteReviewById('${rev.id}')" class="min-h-[40px] px-3.5 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-xs font-bold text-[#E53935] shrink-0">
+                    Eliminar
+                  </button>
+                </article>
+              `;
+            }).join('') : `
+              <div class="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-[#666666]">
+                No hay reseñas registradas.
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    // ==================== PESTAÑA 5: PEDIDOS ====================
+    function renderTabPedidos() {
+      const filtered = db.pedidos.filter(o => adminUi.orderStatusFilter === 'Todos' || o.estado === adminUi.orderStatusFilter);
+
+      return `
+        <div class="space-y-4">
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 class="font-extrabold text-base text-[#1A2A44]">Historial de Pedidos</h2>
+              <p class="text-xs text-[#666666]">Pedidos enviados por WhatsApp desde las tiendas y el carrito.</p>
+            </div>
+            <select onchange="adminUi.orderStatusFilter = this.value; render();" class="min-h-[42px] px-3.5 rounded-xl border border-slate-300 bg-white text-xs font-bold">
+              ${['Todos', 'Nuevo', 'Confirmado', 'Entregado', 'Cancelado'].map(st => `<option value="${st}" ${adminUi.orderStatusFilter === st ? 'selected' : ''}>${st}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="space-y-3">
+            ${filtered.length > 0 ? filtered.map(ord => {
+              const store = db.tiendas.find(s => s.id === ord.tiendaId);
+              return `
+                <article class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="font-extrabold text-sm text-[#1A2A44]">#${escapeHtml(ord.id)}</span>
+                      <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-xs font-extrabold">${escapeHtml(ord.estado || 'Nuevo')}</span>
+                      <span class="text-xs font-bold text-[#111111]">· ${escapeHtml(store ? store.nombre : (ord.tiendaNombre || 'Tienda'))}</span>
+                    </div>
+                    <div class="text-xs text-[#666666] mt-1">
+                      Cliente: <strong class="text-[#111111]">${escapeHtml(ord.cliente)}</strong> · Barrio: ${escapeHtml(ord.barrio || 'Centro')} · ${escapeHtml(ord.fecha || '')}
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <span class="text-base font-extrabold text-[#111111]">${formatARS(ord.total)}</span>
+                    <select onchange="updateAdminOrderStatus('${ord.id}', this.value)" class="min-h-[38px] px-2.5 py-1 rounded-xl border border-slate-300 bg-white text-xs font-bold">
+                      ${['Nuevo', 'Confirmado', 'Entregado', 'Cancelado'].map(st => `<option value="${st}" ${ord.estado === st ? 'selected' : ''}>${st}</option>`).join('')}
+                    </select>
+                  </div>
+                </article>
+              `;
+            }).join('') : `
+              <div class="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-[#666666]">
+                No hay pedidos para mostrar.
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    // ==================== PESTAÑA 6: AJUSTES DEL PANEL ====================
+    function renderTabAjustes() {
+      return `
+        <div class="max-w-2xl bg-white border border-slate-200 rounded-3xl p-6 space-y-5">
+          <div>
+            <h2 class="font-extrabold text-lg text-[#1A2A44]">Ajustes del Administrador</h2>
+            <p class="text-xs text-[#666666] mt-0.5">Actualizá tus credenciales de acceso y el valor mensual de referencia de las tiendas.</p>
+          </div>
+
+          <form id="admin-settings-form" class="space-y-4">
+            <div>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Usuario administrador</label>
+              <input id="set-adm-user" type="text" required value="${escapeHtml(adminCreds.user)}" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm font-semibold" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Contraseña administrador</label>
+              <input id="set-adm-pass" type="text" required value="${escapeHtml(adminCreds.pass)}" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm font-semibold" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Cuota mensual de referencia ($ ARS)</label>
+              <input id="set-adm-fee" type="number" min="0" required value="${Number(adminCreds.monthlyFee) || 5000}" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm font-extrabold" />
+            </div>
+            <button type="submit" class="min-h-[48px] px-6 py-2.5 rounded-xl bg-[#1A2A44] hover:bg-[#111111] text-white text-sm font-extrabold">
+              Guardar ajustes
+            </button>
+          </form>
+        </div>
+      `;
+    }
+
+    // ==================== MODALES ADMIN ====================
+    function openModal(htmlContent) {
+      const mc = document.getElementById('modal-container');
+      if (!mc) return;
+      mc.innerHTML = `<div class="w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] overflow-y-auto">${htmlContent}</div>`;
+      mc.classList.remove('hidden');
+      mc.classList.add('flex');
+    }
+
+    function closeModal() {
+      const mc = document.getElementById('modal-container');
+      if (!mc) return;
+      mc.innerHTML = '';
+      mc.classList.add('hidden');
+      mc.classList.remove('flex');
+    }
+
+    function openCreateStoreModal() {
+      adminUi.storeFormDraft = {
+        id: null,
+        nombre: '',
+        rubro: 'Dulces',
+        barrio: 'Centro',
+        direccion: '',
+        whatsapp: '',
+        email: '',
+        password: '',
+        horarioTexto: 'Lun a Sáb 9 a 20',
+        descripcion: '',
+        haceEnvios: true,
+        precioEnvio: 1500,
+        verificado: false,
+        estadoSuscripcion: 'ACTIVA',
+        logo: '',
+        portada: ''
+      };
+      renderStoreFormModal();
+    }
+
+    function openEditStoreModal(storeId) {
+      const st = db.tiendas.find(t => t.id === storeId);
+      if (!st) return;
+      adminUi.storeFormDraft = { ...st };
+      renderStoreFormModal();
+    }
+
+    function renderStoreFormModal() {
+      const d = adminUi.storeFormDraft;
+      if (!d) return;
+      const isEdit = Boolean(d.id);
+
+      openModal(`
+        <div class="p-5 sm:p-6">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">${isEdit ? 'Editar tienda' : 'Nueva tienda'}</h2>
+            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
+          </div>
+
+          <form id="admin-store-form" class="mt-4 space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-[#111111] mb-1">Nombre *</label>
+                <input id="af-nombre" type="text" required value="${escapeHtml(d.nombre)}" oninput="adminUi.storeFormDraft.nombre = this.value" placeholder="Ej: Heladería El Sol" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm font-semibold" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-[#111111] mb-1">Rubro *</label>
+                <select id="af-rubro" onchange="adminUi.storeFormDraft.rubro = this.value" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
+                  ${ALL_RUBROS.map(r => `<option value="${r}" ${d.rubro === r ? 'selected' : ''}>${r}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-[#111111] mb-1">Barrio *</label>
+                <select id="af-barrio" onchange="adminUi.storeFormDraft.barrio = this.value" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
+                  ${ALL_BARRIOS.map(b => `<option value="${b}" ${d.barrio === b ? 'selected' : ''}>${b}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-[#111111] mb-1">WhatsApp *</label>
+                <input id="af-wa" type="text" required value="${escapeHtml(d.whatsapp)}" oninput="adminUi.storeFormDraft.whatsapp = this.value" placeholder="2983411223" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-[#111111] mb-1">Estado Plan</label>
+                <select id="af-plan" onchange="adminUi.storeFormDraft.estadoSuscripcion = this.value" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-bold">
+                  <option value="ACTIVA" ${d.estadoSuscripcion === 'ACTIVA' ? 'selected' : ''}>ACTIVA</option>
+                  <option value="PRUEBA" ${d.estadoSuscripcion === 'PRUEBA' ? 'selected' : ''}>PRUEBA</option>
+                  <option value="VENCIDA" ${d.estadoSuscripcion === 'VENCIDA' ? 'selected' : ''}>VENCIDA</option>
+                  <option value="PAUSADA" ${d.estadoSuscripcion === 'PAUSADA' ? 'selected' : ''}>PAUSADA</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-[#111111] mb-1">Email del emprendedor</label>
+                <input id="af-email" type="email" value="${escapeHtml(d.email || '')}" oninput="adminUi.storeFormDraft.email = this.value" placeholder="tienda@correo.com" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-[#111111] mb-1">Contraseña</label>
+                <input id="af-pass" type="text" value="${escapeHtml(d.password || '123456')}" oninput="adminUi.storeFormDraft.password = this.value" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="border border-slate-200 rounded-2xl p-3.5">
+                <div class="text-xs font-extrabold text-[#1A2A44] mb-2">Logo</div>
+                <div class="w-16 h-16 rounded-full overflow-hidden bg-slate-100 mb-2">
+                  ${renderSafeImage(d.logo, d.nombre, '', makeSvgFallbackDataUri(d.nombre || 'Logo', '#1A2A44'))}
+                </div>
+                <label class="min-h-[40px] px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold inline-flex items-center cursor-pointer">
+                  <span>📷 Subir logo</span>
+                  <input type="file" accept="image/*" class="hidden" onchange="handleAdminStoreMedia(event, 'logo')" />
+                </label>
+              </div>
+
+              <div class="border border-slate-200 rounded-2xl p-3.5">
+                <div class="text-xs font-extrabold text-[#1A2A44] mb-2">Portada</div>
+                <div class="aspect-video w-full rounded-xl overflow-hidden bg-slate-100 mb-2">
+                  ${renderSafeImage(d.portada, d.nombre, '', makeSvgFallbackDataUri(d.nombre || 'Portada', '#2E7D32'))}
+                </div>
+                <label class="min-h-[40px] px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold inline-flex items-center cursor-pointer">
+                  <span>📷 Subir portada</span>
+                  <input type="file" accept="image/*" class="hidden" onchange="handleAdminStoreMedia(event, 'portada')" />
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Descripción</label>
+              <textarea id="af-desc" rows="2" oninput="adminUi.storeFormDraft.descripcion = this.value" class="w-full p-3 rounded-xl border border-slate-300 text-sm">${escapeHtml(d.descripcion || '')}</textarea>
+            </div>
+
+            <div class="flex items-center gap-5 flex-wrap">
+              <label class="flex items-center gap-2 text-xs font-bold cursor-pointer">
+                <input id="af-envio" type="checkbox" ${d.haceEnvios ? 'checked' : ''} onchange="adminUi.storeFormDraft.haceEnvios = this.checked" class="w-4 h-4" />
+                <span>Hace envíos</span>
+              </label>
+              <label class="flex items-center gap-2 text-xs font-bold cursor-pointer">
+                <input id="af-verif" type="checkbox" ${d.verificado ? 'checked' : ''} onchange="adminUi.storeFormDraft.verificado = this.checked" class="w-4 h-4" />
+                <span>Tienda verificada ✓</span>
+              </label>
+            </div>
+
+            <div class="flex items-center justify-end gap-2.5 pt-2">
+              <button type="button" onclick="closeModal()" class="min-h-[46px] px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold">Cancelar</button>
+              <button type="submit" class="min-h-[46px] px-6 py-2 rounded-xl bg-[#25D366] hover:bg-[#1EB956] text-white text-xs font-extrabold">
+                Guardar tienda
+              </button>
+            </div>
+          </form>
+        </div>
+      `);
+
+      const form = document.getElementById('admin-store-form');
+      if (form) {
+        form.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const draft = adminUi.storeFormDraft;
+          const nombre = String(document.getElementById('af-nombre').value || '').trim();
+          if (!nombre) {
+            showToast('Ingresá el nombre de la tienda.', 'error');
+            return;
+          }
+
+          if (draft.id) {
+            const existing = db.tiendas.find(t => t.id === draft.id);
+            if (existing) {
+              existing.nombre = nombre.toUpperCase();
+              existing.rubro = draft.rubro || existing.rubro;
+              existing.barrio = draft.barrio || existing.barrio;
+              existing.whatsapp = normalizeWhatsAppPhone(draft.whatsapp || existing.whatsapp);
+              existing.email = String(draft.email || existing.email || '').trim().toLowerCase();
+              existing.password = String(draft.password || existing.password || '123456').trim();
+              existing.estadoSuscripcion = draft.estadoSuscripcion || existing.estadoSuscripcion;
+              existing.descripcion = String(draft.descripcion || '').trim();
+              existing.haceEnvios = Boolean(draft.haceEnvios);
+              existing.envioHoy = Boolean(draft.haceEnvios);
+              existing.verificado = Boolean(draft.verificado);
+              if (draft.logo) existing.logo = draft.logo;
+              if (draft.portada) existing.portada = draft.portada;
+
+              saveState(db);
+              syncStoreToSheet(existing);
+              closeModal();
+              showToast('Tienda actualizada y sincronizada.', 'success');
+              render();
+              return;
+            }
+          }
+
+          const newId = 'tienda-' + Date.now();
+          const baseSlug = slugify(nombre);
+          const uniqueSlug = db.tiendas.some(t => t.slug === baseSlug) ? `${baseSlug}-${Math.floor(10 + Math.random() * 89)}` : baseSlug;
+
+          const newStore = {
+            id: newId,
+            slug: uniqueSlug,
+            nombre: nombre.toUpperCase(),
+            dueno: nombre,
+            email: String(draft.email || '').trim().toLowerCase(),
+            password: String(draft.password || '123456').trim(),
+            rubro: draft.rubro || 'Otros',
+            barrio: draft.barrio || 'Centro',
+            direccion: (draft.barrio || 'Centro') + ', Tres Arroyos',
+            whatsapp: normalizeWhatsAppPhone(draft.whatsapp),
+            instagram: '',
+            logo: draft.logo || makeSvgFallbackDataUri(nombre, '#1A2A44'),
+            portada: draft.portada || makeSvgFallbackDataUri(nombre, '#2E7D32'),
+            descripcion: String(draft.descripcion || '').trim() || `Tienda local en ${draft.barrio || 'Tres Arroyos'}.`,
+            antiguedadTexto: 'En Tres Arroyos',
+            rating: 5.0,
+            reviewCount: 0,
+            fiveStarCount: 0,
+            salesCount: 1,
+            verificado: Boolean(draft.verificado),
+            abiertoAhora: true,
+            horarioTexto: 'Lun a Sáb 9 a 20',
+            haceEnvios: Boolean(draft.haceEnvios),
+            envioHoy: Boolean(draft.haceEnvios),
+            precioEnvio: 1500,
+            envioGratisDesde: 0,
+            aceptaEncargo: false,
+            metodosPago: ['Efectivo', 'Transferencia'],
+            estadoSuscripcion: draft.estadoSuscripcion || 'ACTIVA',
+            fechaRegistro: new Date().toISOString().split('T')[0]
+          };
+
+          db.tiendas.unshift(newStore);
+          saveState(db);
+          syncStoreToSheet(newStore);
+          closeModal();
+          showToast('¡Nueva tienda creada y sincronizada!', 'success');
+          render();
+        });
+      }
+    }
+
+    async function handleAdminStoreMedia(event, field) {
+      const file = event.target.files && event.target.files[0];
+      if (!file || !adminUi.storeFormDraft) return;
+      try {
+        const dataUrl = await readImageFileAsDataUrl(file);
+        adminUi.storeFormDraft[field] = dataUrl;
+        renderStoreFormModal();
+        showToast('Imagen cargada.', 'success');
+      } catch (err) {
+        showToast(err.message || 'No se pudo cargar la imagen.', 'error');
+      }
+    }
+
+    function changeStoreSubscriptionPlan(storeId, newPlan) {
+      const st = db.tiendas.find(t => t.id === storeId);
+      if (!st) return;
+      st.estadoSuscripcion = newPlan;
+      saveState(db);
+      syncStoreToSheet(st);
+      showToast(`Plan de ${st.nombre}: ${newPlan}`, 'success');
+      render();
+    }
+
+    function toggleStoreVerified(storeId) {
+      const st = db.tiendas.find(t => t.id === storeId);
+      if (!st) return;
+      st.verificado = !st.verificado;
+      saveState(db);
+      syncStoreToSheet(st);
+      showToast(st.verificado ? `${st.nombre} verificada ✓` : `Verificación quitada a ${st.nombre}`, 'info');
+      render();
+    }
+
+    function deleteStoreById(storeId) {
+      const st = db.tiendas.find(t => t.id === storeId);
+      if (!st) return;
+      openModal(`
+        <div class="p-6">
+          <h3 class="font-extrabold text-lg text-[#111111]">Borrar tienda</h3>
+          <p class="text-sm text-[#666666] mt-2">¿Seguro que querés eliminar <strong>${escapeHtml(st.nombre)}</strong> y sus productos?</p>
+          <div class="mt-5 flex justify-end gap-2">
+            <button type="button" onclick="closeModal()" class="min-h-[42px] px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold">Cancelar</button>
+            <button type="button" id="confirm-del-store" class="min-h-[42px] px-5 py-2 rounded-xl bg-[#E53935] text-white text-xs font-extrabold">Eliminar</button>
+          </div>
+        </div>
+      `);
+      document.getElementById('confirm-del-store')?.addEventListener('click', () => {
+        db.tiendas = db.tiendas.filter(t => t.id !== storeId);
+        db.productos = db.productos.filter(p => p.tiendaId !== storeId);
+        saveState(db);
+        syncStoreToSheet(st, 'delete');
+        closeModal();
+        showToast('Tienda eliminada.', 'info');
+        render();
+      });
+    }
+
+    function openCreateOfferModal() {
+      const prods = db.productos;
+      if (prods.length === 0) {
+        showToast('No hay productos cargados para crear una oferta.', 'error');
+        return;
+      }
+      const first = prods[0];
+      openModal(`
+        <div class="p-5 sm:p-6">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">Nueva oferta del día</h2>
+            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
+          </div>
+          <form id="admin-offer-form" class="mt-4 space-y-4">
+            <div>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Producto</label>
+              <select id="of-prod-select" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 bg-white text-sm font-semibold">
+                ${prods.map(p => {
+                  const st = db.tiendas.find(s => s.id === p.tiendaId);
+                  return `<option value="${p.id}">${escapeHtml(p.nombre)} (${escapeHtml(st ? st.nombre : '')}) — Regular: ${formatARS(p.precio)}</option>`;
+                }).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Precio de oferta ($)</label>
+              <input id="of-price-input" type="number" min="1" required value="${Math.max(100, Math.round((first.precio || 10000) * 0.8))}" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm font-extrabold" />
+            </div>
+            <button type="submit" class="w-full min-h-[48px] rounded-xl bg-[#E53935] text-white text-sm font-extrabold">
+              Publicar oferta
+            </button>
+          </form>
+        </div>
+      `);
+
+      document.getElementById('admin-offer-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const prodId = document.getElementById('of-prod-select').value;
+        const offerPrice = Number(document.getElementById('of-price-input').value) || 0;
+        const prod = db.productos.find(p => p.id === prodId);
+        if (!prod || !(offerPrice > 0)) return;
+
+        prod.precioOferta = offerPrice;
+        db.ofertas = db.ofertas.filter(o => o.productoId !== prodId);
+        const newOffer = {
+          id: 'of-' + Date.now(),
+          productoId: prodId,
+          tiendaId: prod.tiendaId,
+          precioOferta: offerPrice,
+          hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+          destacada: true
+        };
+        db.ofertas.unshift(newOffer);
+        saveState(db);
+        syncOfferToSheet(newOffer);
+        closeModal();
+        showToast('¡Oferta publicada!', 'success');
+        render();
+      });
+    }
+
+    function openEditOfferModal(prodId, currentOfferPrice) {
+      const prod = db.productos.find(p => p.id === prodId);
+      if (!prod) return;
+      openModal(`
+        <div class="p-5 sm:p-6">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h2 class="font-extrabold text-xl text-[#1A2A44]">Editar oferta · ${escapeHtml(prod.nombre)}</h2>
+            <button type="button" onclick="closeModal()" class="w-10 h-10 rounded-xl bg-slate-100 font-bold">✕</button>
+          </div>
+          <form id="admin-edit-offer-form" class="mt-4 space-y-4">
+            <div class="text-xs text-[#666666]">Precio regular: <strong>${formatARS(prod.precio)}</strong></div>
+            <div>
+              <label class="block text-xs font-bold text-[#111111] mb-1">Nuevo precio de oferta ($)</label>
+              <input id="edit-of-price" type="number" min="1" required value="${Number(currentOfferPrice) || 1000}" class="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm font-extrabold" />
+            </div>
+            <button type="submit" class="w-full min-h-[48px] rounded-xl bg-[#1A2A44] text-white text-sm font-extrabold">
+              Guardar precio de oferta
+            </button>
+          </form>
+        </div>
+      `);
+
+      document.getElementById('admin-edit-offer-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const val = Number(document.getElementById('edit-of-price').value) || 0;
+        if (!(val > 0)) return;
+        prod.precioOferta = val;
+        const existing = db.ofertas.find(o => o.productoId === prodId);
+        if (existing) {
+          existing.precioOferta = val;
+          syncOfferToSheet(existing);
+        } else {
+          const created = {
+            id: 'of-' + Date.now(),
+            productoId: prodId,
+            tiendaId: prod.tiendaId,
+            precioOferta: val,
+            hastaCuando: Date.now() + 4 * 60 * 60 * 1000,
+            destacada: true
+          };
+          db.ofertas.unshift(created);
+          syncOfferToSheet(created);
+        }
+        saveState(db);
+        closeModal();
+        showToast('Oferta actualizada.', 'success');
+        render();
+      });
+    }
+
+    function removeProductOffer(prodId) {
+      const prod = db.productos.find(p => p.id === prodId);
+      if (prod) prod.precioOferta = null;
+      const removed = db.ofertas.find(o => o.productoId === prodId);
+      db.ofertas = db.ofertas.filter(o => o.productoId !== prodId);
+      saveState(db);
+      if (removed) syncOfferToSheet(removed, 'delete');
+      showToast('Oferta quitada.', 'info');
+      render();
+    }
+
+    function deleteReviewById(revId) {
+      const rev = db.resenas.find(r => r.id === revId);
+      db.resenas = db.resenas.filter(r => r.id !== revId);
+      saveState(db);
+      if (rev) syncReviewToSheet(rev, 'delete');
+      showToast('Reseña eliminada.', 'info');
+      render();
+    }
+
+    function updateAdminOrderStatus(orderId, newStatus) {
+      const ord = db.pedidos.find(o => o.id === orderId);
+      if (!ord) return;
+      ord.estado = newStatus;
+      saveState(db);
+      syncOrderToSheet(ord);
+      showToast(`Pedido #${orderId} → ${newStatus}`, 'success');
+      render();
+    }
+
+    function adminLogout() {
+      sessionStorage.removeItem('admin_ta_logged_in');
+      adminUi.authenticated = false;
+      render();
+    }
+
+    // ==================== RENDERIZADO PRINCIPAL ====================
+    function render() {
+      const root = document.getElementById('admin-app');
+      if (!root) return;
+
+      if (!adminUi.authenticated) {
+        root.innerHTML = renderAdminLogin();
+        const loginForm = document.getElementById('admin-login-form');
+        if (loginForm) {
+          loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const u = String(document.getElementById('adm-user-input').value || '').trim();
+            const p = String(document.getElementById('adm-pass-input').value || '').trim();
+            if (u === adminCreds.user && p === adminCreds.pass) {
+              sessionStorage.setItem('admin_ta_logged_in', '1');
+              adminUi.authenticated = true;
+              showToast('¡Bienvenido al panel de administración!', 'success');
+              render();
+            } else {
+              showToast('Usuario o contraseña incorrectos.', 'error');
+            }
+          });
+        }
+        return;
+      }
+
+      let bodyHtml = '';
+      if (adminUi.tab === 'RESUMEN') bodyHtml = renderTabResumen();
+      else if (adminUi.tab === 'TIENDAS') bodyHtml = renderTabTiendas();
+      else if (adminUi.tab === 'OFERTAS') bodyHtml = renderTabOfertas();
+      else if (adminUi.tab === 'RESENAS') bodyHtml = renderTabResenas();
+      else if (adminUi.tab === 'PEDIDOS') bodyHtml = renderTabPedidos();
+      else if (adminUi.tab === 'AJUSTES') bodyHtml = renderTabAjustes();
+
+      root.innerHTML = `
+        ${renderAdminHeader()}
+        <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-6">
+          ${bodyHtml}
+        </main>
+      `;
+
+      const settingsForm = document.getElementById('admin-settings-form');
+      if (settingsForm) {
+        settingsForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          adminCreds = {
+            user: String(document.getElementById('set-adm-user').value || '').trim() || DEFAULT_ADMIN_CREDS.user,
+            pass: String(document.getElementById('set-adm-pass').value || '').trim() || DEFAULT_ADMIN_CREDS.pass,
+            monthlyFee: Number(document.getElementById('set-adm-fee').value) || DEFAULT_ADMIN_CREDS.monthlyFee
+          };
+          saveAdminCreds(adminCreds);
+          showToast('Ajustes guardados.', 'success');
+          render();
+        });
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      render();
+      if (adminUi.authenticated) {
+        fetchSheetData(false);
+      }
+    });
+  </script>
+</body>
+</html>
