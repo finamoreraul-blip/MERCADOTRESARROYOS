@@ -90,10 +90,9 @@
   <script>
     /**
      * MERCADO TRES ARROYOS — Aplicación Web Completa y Autocontenida
-     * Sincronización bidireccional con Google Sheets vía Google Apps Script.
+     * Sincronización bidireccional con Google Sheets vía Google Apps Script (sin localStorage).
      */
 
-    const STORAGE_KEY = 'mercado_tres_arroyos_preview_v1';
     const SUPPORT_WHATSAPP = '5492983000000';
     const SHEET_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyFNP9iDnWEdjJ-oUlhl7VpE63_ZO9aJ2Y9vHDF79JYFRSIXGzdNCzfQkdwaB2frk4hPw/exec';
 
@@ -876,42 +875,12 @@
     }
 
     function loadState() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (!raw) {
-          const initial = createInitialDatabase();
-          saveState(initial);
-          return initial;
-        }
-        const parsed = JSON.parse(raw);
-        if (!parsed || !Array.isArray(parsed.tiendas) || parsed.tiendas.length === 0 || !Array.isArray(parsed.productos)) {
-          const initial = createInitialDatabase();
-          saveState(initial);
-          return initial;
-        }
-        return {
-          tiendas: parsed.tiendas,
-          productos: parsed.productos,
-          ofertas: Array.isArray(parsed.ofertas) ? parsed.ofertas : [],
-          resenas: Array.isArray(parsed.resenas) ? parsed.resenas : [],
-          pedidos: Array.isArray(parsed.pedidos) ? parsed.pedidos : [],
-          carrito: Array.isArray(parsed.carrito) ? parsed.carrito : [],
-          favoritos: Array.isArray(parsed.favoritos) ? parsed.favoritos : [],
-          misPedidosCliente: Array.isArray(parsed.misPedidosCliente) ? parsed.misPedidosCliente : []
-        };
-      } catch (err) {
-        console.warn('Error leyendo estado local, inicializando demo:', err);
-        const fallback = createInitialDatabase();
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(fallback)); } catch (_) {}
-        return fallback;
-      }
+      return createInitialDatabase();
     }
 
     function saveState(stateObj) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateObj));
-      } catch (err) {
-        console.warn('No se pudo persistir en localStorage:', err);
+      if (stateObj && typeof stateObj === 'object') {
+        db = stateObj;
       }
     }
 
